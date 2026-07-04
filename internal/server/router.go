@@ -101,6 +101,7 @@ func New(p RouterParams) *server.Hertz {
 		v1.GET("/sources/:sourceId/popular", p.Media.Popular)
 		v1.GET("/sources/:sourceId/latest", p.Media.Latest)
 		v1.GET("/sources/:sourceId/search", p.Media.Search)
+		v1.GET("/sources/:sourceId/recommendations", p.Media.Recommendations)
 		v1.GET("/sources/:sourceId/genres", p.Media.Genres)
 		v1.GET("/sources/:sourceId/categories", p.Media.Categories)
 		v1.GET("/media/:id", p.Media.Details)
@@ -162,6 +163,7 @@ func New(p RouterParams) *server.Hertz {
 		connections.POST("/connections/:id/authorize", p.Connection.Authorize)
 		connections.POST("/connections/callback", p.Connection.Callback)
 		connections.POST("/connections/:id/refresh", p.Connection.Refresh)
+		connections.GET("/connections/:id/search", p.Connection.Search)
 	}
 
 	// Admin user management. Reads are gated by users.read, mutations by

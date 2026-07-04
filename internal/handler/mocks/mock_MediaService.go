@@ -642,6 +642,66 @@ func (_c *MockMediaService_Popular_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
+// Recommendations provides a mock function with given fields: ctx, sourceID, genres, exclude, page
+func (_m *MockMediaService) Recommendations(ctx context.Context, sourceID string, genres []string, exclude []string, page int) (domain.MediaPage, error) {
+	ret := _m.Called(ctx, sourceID, genres, exclude, page)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Recommendations")
+	}
+
+	var r0 domain.MediaPage
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int) (domain.MediaPage, error)); ok {
+		return rf(ctx, sourceID, genres, exclude, page)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int) domain.MediaPage); ok {
+		r0 = rf(ctx, sourceID, genres, exclude, page)
+	} else {
+		r0 = ret.Get(0).(domain.MediaPage)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, []string, []string, int) error); ok {
+		r1 = rf(ctx, sourceID, genres, exclude, page)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaService_Recommendations_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Recommendations'
+type MockMediaService_Recommendations_Call struct {
+	*mock.Call
+}
+
+// Recommendations is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceID string
+//   - genres []string
+//   - exclude []string
+//   - page int
+func (_e *MockMediaService_Expecter) Recommendations(ctx interface{}, sourceID interface{}, genres interface{}, exclude interface{}, page interface{}) *MockMediaService_Recommendations_Call {
+	return &MockMediaService_Recommendations_Call{Call: _e.mock.On("Recommendations", ctx, sourceID, genres, exclude, page)}
+}
+
+func (_c *MockMediaService_Recommendations_Call) Run(run func(ctx context.Context, sourceID string, genres []string, exclude []string, page int)) *MockMediaService_Recommendations_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].([]string), args[3].([]string), args[4].(int))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_Recommendations_Call) Return(_a0 domain.MediaPage, _a1 error) *MockMediaService_Recommendations_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaService_Recommendations_Call) RunAndReturn(run func(context.Context, string, []string, []string, int) (domain.MediaPage, error)) *MockMediaService_Recommendations_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Search provides a mock function with given fields: ctx, sourceID, query, page, filter
 func (_m *MockMediaService) Search(ctx context.Context, sourceID string, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
 	ret := _m.Called(ctx, sourceID, query, page, filter)

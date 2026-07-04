@@ -100,6 +100,27 @@ func (h *MediaHandler) Search(ctx context.Context, c *app.RequestContext) {
 	writeOK(c, consts.StatusOK, res)
 }
 
+// Recommendations godoc
+// @Summary  Content-based recommendations for a source
+// @Description Ranks a source's catalog by genre overlap with the supplied genres (aggregated client-side from recent reading; history stays on the client), most-overlap first, tie-broken by the popular order. Media sharing no requested genre, and any id in exclude, are omitted. With no genres it falls back to the source's popular feed.
+// @Tags     catalog
+// @Produce  json
+// @Param    sourceId path  string true  "Source ID"
+// @Param    genres   query string false "Comma-separated genre slugs/names to match"
+// @Param    exclude  query string false "Comma-separated media ids to omit (already-read / seed)"
+// @Param    page     query int    false "Page (1-based)"
+// @Success  200 {object} domain.MediaPage
+// @Router   /v1/sources/{sourceId}/recommendations [get]
+func (h *MediaHandler) Recommendations(ctx context.Context, c *app.RequestContext) {
+	res, err := h.svc.Recommendations(ctx, c.Param("sourceId"), queryAll(c, "genres"), queryAll(c, "exclude"), queryInt(c, "page", 1))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writePagination(c, domain.OffsetPagination(res.Page, domain.CatalogPageSize, -1, res.HasNext))
+	writeOK(c, consts.StatusOK, res)
+}
+
 // Genres godoc
 // @Summary  Filterable genres for a source
 // @Tags     catalog

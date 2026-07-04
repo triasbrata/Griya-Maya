@@ -140,8 +140,8 @@ func TestConnectionService_Update_KeepsClientFieldsWhenEmpty(t *testing.T) {
 
 	_, err := svc.Update(ctx, "c1", domain.ConnectionWriteRequest{Label: ""})
 	require.NoError(t, err)
-	assert.Equal(t, "", saved.Label)          // label always overwritten
-	assert.Equal(t, "old", saved.ClientID)    // unchanged
+	assert.Equal(t, "", saved.Label)               // label always overwritten
+	assert.Equal(t, "old", saved.ClientID)         // unchanged
 	assert.Equal(t, "old-enc", saved.ClientSecret) // unchanged
 }
 
@@ -321,4 +321,214 @@ func TestConnectionService_Refresh_Errors(t *testing.T) {
 	repo.EXPECT().Get(ctx, "missing").Return(domain.Connection{}, domain.ErrNotFound).Once()
 	_, err = svc.Refresh(ctx, "missing")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+// connMAL returns a connected MAL connection whose access token decrypts to
+// "acc-token", ready for a Search call.
+func connMAL(t *testing.T) domain.Connection {
+	t.Helper()
+	encAccess, err := encrypt(testKey, "acc-token")
+	require.NoError(t, err)
+	return domain.Connection{
+		ID: "c1", Provider: domain.ProviderMyAnimeList, ClientID: "abc123",
+		AccessToken: encAccess, Status: domain.ConnectionConnected,
+	}
+}
+
+func TestConnectionService_Search_EmptyQuery(t *testing.T) {
+	svc, _, _, _ := newConnSvc(t)
+	_, err := svc.Search(context.Background(), "c1", "  ", "manga", 10)
+	assert.ErrorIs(t, err, domain.ErrInvalidInput)
+}
+
+func TestConnectionService_Search_UnknownType(t *testing.T) {
+	svc, _, _, _ := newConnSvc(t)
+	_, err := svc.Search(context.Background(), "c1", "one piece", "audio", 10)
+	assert.ErrorIs(t, err, domain.ErrInvalidInput)
+}
+
+// TestConnectionService_Search_EndpointSelection verifies type→MAL endpoint
+// selection, limit clamping, the Bearer token, and normalization of a manga hit
+// (author role split: "Story & Art" → both authors and artists).
+func TestConnectionService_Search_Manga(t *testing.T) {
+	svc, repo, oauth, _ := newConnSvc(t)
+	ctx := context.Background()
+	repo.EXPECT().Get(ctx, "c1").Return(connMAL(t), nil)
+
+	body := []byte(`{"data":[
+		{"node":{"id":13,"title":"One Piece","synopsis":"pirates",
+			"main_picture":{"medium":"m.jpg","large":"l.jpg"},
+			"status":"currently_publishing",
+			"genres":[{"name":"Action"},{"name":"Adventure"}],
+			"authors":[{"node":{"first_name":"Eiichiro","last_name":"Oda"},"role":"Story & Art"}]}}
+	]}`)
+	var gotURL, gotToken string
+	oauth.EXPECT().Get(ctx, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, u, token string) ([]byte, int, error) {
+			gotURL, gotToken = u, token
+			return body, 200, nil
+		})
+
+	// limit 99 must clamp to 25.
+	res, err := svc.Search(ctx, "c1", "one piece", "manga", 99)
+	require.NoError(t, err)
+
+	assert.Contains(t, gotURL, "https://api.myanimelist.net/v2/manga?")
+	assert.Contains(t, gotURL, "limit=25")
+	assert.Equal(t, "acc-token", gotToken) // Bearer credential is the decrypted access token
+
+	require.Len(t, res, 1)
+	s := res[0]
+	assert.Equal(t, "13", s.ExternalID)
+	assert.Equal(t, "One Piece", s.Title)
+	assert.Equal(t, "pirates", s.Description)
+	assert.Equal(t, "l.jpg", s.CoverURL) // large preferred
+	assert.Equal(t, domain.StatusOngoing, s.Status)
+	assert.Equal(t, []string{"Action", "Adventure"}, s.Genres)
+	assert.Equal(t, []string{}, s.Categories)
+	assert.Equal(t, []string{"Eiichiro Oda"}, s.Authors) // Story & Art → author
+	assert.Equal(t, []string{"Eiichiro Oda"}, s.Artists) // Story & Art → artist
+	assert.Equal(t, "https://myanimelist.net/manga/13", s.URL)
+}
+
+// TestConnectionService_Search_AuthorRoleSplit covers Story-only → author,
+// Art-only → artist, and empty role → author, plus medium cover fallback.
+func TestConnectionService_Search_AuthorRoleSplit(t *testing.T) {
+	svc, repo, oauth, _ := newConnSvc(t)
+	ctx := context.Background()
+	repo.EXPECT().Get(ctx, "c1").Return(connMAL(t), nil)
+
+	body := []byte(`{"data":[
+		{"node":{"id":7,"title":"T","main_picture":{"medium":"m.jpg"},"status":"finished",
+			"authors":[
+				{"node":{"first_name":"Story","last_name":"Writer"},"role":"Story"},
+				{"node":{"first_name":"Art","last_name":"Drawer"},"role":"Art"},
+				{"node":{"first_name":"No","last_name":"Role"},"role":""}
+			]}}
+	]}`)
+	oauth.EXPECT().Get(ctx, mock.Anything, "acc-token").Return(body, 200, nil)
+
+	res, err := svc.Search(ctx, "c1", "t", "novel", 10) // novel → /manga endpoint
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	s := res[0]
+	assert.Equal(t, "m.jpg", s.CoverURL) // falls back to medium
+	assert.Equal(t, domain.StatusCompleted, s.Status)
+	assert.Equal(t, []string{"Story Writer", "No Role"}, s.Authors)
+	assert.Equal(t, []string{"Art Drawer"}, s.Artists)
+}
+
+// TestConnectionService_Search_Anime verifies video → /anime endpoint, studios
+// → authors, empty artists, and anime status vocabulary.
+func TestConnectionService_Search_Anime(t *testing.T) {
+	svc, repo, oauth, _ := newConnSvc(t)
+	ctx := context.Background()
+	repo.EXPECT().Get(ctx, "c1").Return(connMAL(t), nil)
+
+	body := []byte(`{"data":[
+		{"node":{"id":21,"title":"Anime","status":"currently_airing",
+			"genres":[{"name":"Shounen"}],
+			"studios":[{"name":"Toei Animation"},{"name":"Studio B"}]}}
+	]}`)
+	var gotURL string
+	oauth.EXPECT().Get(ctx, mock.Anything, "acc-token").
+		RunAndReturn(func(_ context.Context, u, _ string) ([]byte, int, error) {
+			gotURL = u
+			return body, 200, nil
+		})
+
+	res, err := svc.Search(ctx, "c1", "anime", "video", 5)
+	require.NoError(t, err)
+	assert.Contains(t, gotURL, "/anime?")
+	assert.Contains(t, gotURL, "studios")
+	require.Len(t, res, 1)
+	s := res[0]
+	assert.Equal(t, domain.StatusOngoing, s.Status)
+	assert.Equal(t, []string{"Toei Animation", "Studio B"}, s.Authors)
+	assert.Equal(t, []string{}, s.Artists)
+	assert.Equal(t, "https://myanimelist.net/anime/21", s.URL)
+}
+
+// TestConnectionService_Search_RefreshRetry drives the 401 → refresh → retry
+// path: the first GET 401s, Refresh renews tokens, and the retried GET (with the
+// new token) succeeds.
+func TestConnectionService_Search_RefreshRetry(t *testing.T) {
+	svc, repo, oauth, _ := newConnSvc(t)
+	ctx := context.Background()
+
+	encAccess, _ := encrypt(testKey, "stale-token")
+	encSecret, _ := encrypt(testKey, "topsecret")
+	encRefresh, _ := encrypt(testKey, "refresh-tok")
+	conn := domain.Connection{
+		ID: "c1", Provider: domain.ProviderMyAnimeList, ClientID: "abc123",
+		AccessToken: encAccess, ClientSecret: encSecret, RefreshToken: encRefresh,
+		Status: domain.ConnectionConnected,
+	}
+	// Search loads the connection; Refresh (inside) loads it again.
+	repo.EXPECT().Get(ctx, "c1").Return(conn, nil).Twice()
+
+	// First GET with stale token → 401.
+	oauth.EXPECT().Get(ctx, mock.Anything, "stale-token").Return(nil, 401, nil).Once()
+	// Refresh renews to "fresh-token".
+	oauth.EXPECT().Refresh(ctx, domain.ProviderMyAnimeList, "abc123", "topsecret", "refresh-tok").
+		Return(domain.TokenResponse{AccessToken: "fresh-token", RefreshToken: "r2", TokenType: "Bearer", ExpiresIn: 3600}, nil)
+	repo.EXPECT().SaveTokens(ctx, "c1", mock.Anything, mock.Anything, "Bearer", mock.Anything, domain.ConnectionConnected, mock.Anything).Return(nil)
+	// Retry GET with the fresh token → 200.
+	body := []byte(`{"data":[{"node":{"id":1,"title":"Ok","status":"finished"}}]}`)
+	oauth.EXPECT().Get(ctx, mock.Anything, "fresh-token").Return(body, 200, nil).Once()
+
+	res, err := svc.Search(ctx, "c1", "q", "manga", 10)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "1", res[0].ExternalID)
+}
+
+// TestConnectionService_Search_StillUnauthorized covers a 401 that persists even
+// after the refresh+retry: it surfaces a clean ErrUnauthorized.
+func TestConnectionService_Search_StillUnauthorized(t *testing.T) {
+	svc, repo, oauth, _ := newConnSvc(t)
+	ctx := context.Background()
+
+	encAccess, _ := encrypt(testKey, "stale")
+	encSecret, _ := encrypt(testKey, "sec")
+	encRefresh, _ := encrypt(testKey, "ref")
+	conn := domain.Connection{
+		ID: "c1", Provider: domain.ProviderMyAnimeList, ClientID: "abc123",
+		AccessToken: encAccess, ClientSecret: encSecret, RefreshToken: encRefresh,
+		Status: domain.ConnectionConnected,
+	}
+	repo.EXPECT().Get(ctx, "c1").Return(conn, nil).Twice()
+	oauth.EXPECT().Get(ctx, mock.Anything, "stale").Return(nil, 401, nil).Once()
+	oauth.EXPECT().Refresh(ctx, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(domain.TokenResponse{AccessToken: "fresh", TokenType: "Bearer", ExpiresIn: 60}, nil)
+	repo.EXPECT().SaveTokens(ctx, "c1", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	oauth.EXPECT().Get(ctx, mock.Anything, "fresh").Return(nil, 401, nil).Once()
+
+	_, err := svc.Search(ctx, "c1", "q", "manga", 10)
+	assert.ErrorIs(t, err, domain.ErrUnauthorized)
+}
+
+func TestConnectionService_Search_Errors(t *testing.T) {
+	ctx := context.Background()
+
+	// Connection not found.
+	svc, repo, _, _ := newConnSvc(t)
+	repo.EXPECT().Get(ctx, "missing").Return(domain.Connection{}, domain.ErrNotFound).Once()
+	_, err := svc.Search(ctx, "missing", "q", "manga", 10)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+
+	// Non-200, non-401 status surfaces an error.
+	svc2, repo2, oauth2, _ := newConnSvc(t)
+	repo2.EXPECT().Get(ctx, "c1").Return(connMAL(t), nil).Once()
+	oauth2.EXPECT().Get(ctx, mock.Anything, mock.Anything).Return([]byte("boom"), 500, nil).Once()
+	_, err = svc2.Search(ctx, "c1", "q", "manga", 10)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, domain.ErrUnauthorized)
+
+	// Malformed JSON on 200.
+	svc3, repo3, oauth3, _ := newConnSvc(t)
+	repo3.EXPECT().Get(ctx, "c1").Return(connMAL(t), nil).Once()
+	oauth3.EXPECT().Get(ctx, mock.Anything, mock.Anything).Return([]byte("{bad"), 200, nil).Once()
+	_, err = svc3.Search(ctx, "c1", "q", "manga", 10)
+	require.Error(t, err)
 }

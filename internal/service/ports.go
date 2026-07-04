@@ -18,6 +18,9 @@ type MediaRepository interface {
 	// Reads.
 	List(ctx context.Context, sourceID, order string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Search(ctx context.Context, sourceID, query string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
+	// Recommend ranks a source's media by genre overlap with genres (desc), tie-
+	// broken by the popular order; zero-overlap and exclude ids are omitted.
+	Recommend(ctx context.Context, sourceID string, genres, exclude []string, page, perPage int) (domain.MediaPage, error)
 	Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Get(ctx context.Context, id string) (domain.Media, error)
@@ -80,6 +83,10 @@ type ConnectionRepository interface {
 type OAuthClient interface {
 	Exchange(ctx context.Context, p domain.Provider, clientID, clientSecret, code, codeVerifier, redirectURI string) (domain.TokenResponse, error)
 	Refresh(ctx context.Context, p domain.Provider, clientID, clientSecret, refreshToken string) (domain.TokenResponse, error)
+	// Get performs an authenticated GET against url with accessToken as the
+	// Bearer credential, returning the raw body and HTTP status (non-2xx is not
+	// an error) so the caller can refresh-on-401 and retry.
+	Get(ctx context.Context, url, accessToken string) ([]byte, int, error)
 }
 
 // StateStore persists the short-lived PKCE/state bundle between the authorize

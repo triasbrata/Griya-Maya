@@ -197,9 +197,11 @@ func (f CatalogFilter) SortColumn(feedDefault string) string {
 // are provided as display names (the service upserts them and rewrites the
 // media's join rows). On create, Type defaults to MediaManga when empty.
 type MediaWriteRequest struct {
-	SourceID    string      `json:"sourceId"`
-	Type        MediaType   `json:"type,omitempty"`
-	URL         string      `json:"url"`
+	SourceID string    `json:"sourceId"`
+	Type     MediaType `json:"type,omitempty"`
+	// URL identifies the entry in the Mihon source contract. Optional on write:
+	// when omitted, the service defaults it to the generated media id.
+	URL         string      `json:"url,omitempty"`
 	Title       string      `json:"title"`
 	CoverURL    string      `json:"coverUrl,omitempty"`
 	Description string      `json:"description,omitempty"`

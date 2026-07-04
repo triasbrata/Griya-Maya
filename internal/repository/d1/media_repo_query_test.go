@@ -66,6 +66,70 @@ func TestMediaRepo_List_PropagatesError(t *testing.T) {
 	assert.ErrorIs(t, err, wantErr)
 }
 
+func TestMediaRepo_Recommend_RanksByOverlap(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	var gotSQL string
+	var params []any
+	// genres(2 overlap) + source(1) + include-genres(2) + exclude(1) + limit + offset = 8.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(8)...).RunAndReturn(
+		func(_ context.Context, sql string, p ...any) ([]map[string]any, error) {
+			gotSQL, params = sql, p
+			return []map[string]any{mediaRow("m1", "Action"), mediaRow("m2", "Comedy")}, nil
+		})
+
+	got, err := repo.Recommend(context.Background(), "src",
+		[]string{"Action", "Sci Fi"}, []string{"seed1"}, 1, 1)
+	require.NoError(t, err)
+	assert.True(t, got.HasNext)
+	require.Len(t, got.Items, 1) // trimmed to perPage
+	assert.Equal(t, "m1", got.Items[0].ID)
+
+	// Ranking is overlap-count first, then the popular tie-break.
+	assert.Contains(t, gotSQL, "COUNT(DISTINCT t.slug)")
+	assert.Contains(t, gotSQL, "AS overlap")
+	assert.Contains(t, gotSQL, "ORDER BY overlap DESC, popularity DESC, title ASC")
+	// Zero-overlap gate reuses the OR-mode EXISTS clause on the genre join tables.
+	assert.Contains(t, gotSQL, "EXISTS (SELECT 1 FROM media_genre")
+	// Excluded ids are dropped.
+	assert.Contains(t, gotSQL, "media.id NOT IN (")
+	// Genre names are bound as normalized slugs; the seed id is bound verbatim.
+	assertContains(t, params, "action")
+	assertContains(t, params, "sci-fi")
+	assertContains(t, params, "src")
+	assertContains(t, params, "seed1")
+}
+
+func TestMediaRepo_Recommend_NoExclude(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	var gotSQL string
+	// genre(1 overlap) + source(1) + include-genre(1) + limit + offset = 5, no exclude.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(5)...).RunAndReturn(
+		func(_ context.Context, sql string, _ ...any) ([]map[string]any, error) {
+			gotSQL = sql
+			return []map[string]any{mediaRow("m1", "Action")}, nil
+		})
+
+	got, err := repo.Recommend(context.Background(), "src", []string{"Action"}, nil, 1, 30)
+	require.NoError(t, err)
+	require.Len(t, got.Items, 1)
+	assert.NotContains(t, gotSQL, "NOT IN")
+}
+
+func TestMediaRepo_Recommend_PropagatesError(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+	wantErr := errors.New("d1 boom")
+
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(5)...).Return(nil, wantErr)
+
+	_, err := repo.Recommend(context.Background(), "src", []string{"Action"}, nil, 1, 30)
+	assert.ErrorIs(t, err, wantErr)
+}
+
 func TestMediaRepo_Search_BindsQueryLike(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}

@@ -188,6 +188,35 @@ func (h *ConnectionHandler) Callback(ctx context.Context, c *app.RequestContext)
 	writeOK(c, consts.StatusOK, res)
 }
 
+// Search godoc
+// @Summary  Search a connection's provider for media suggestions.
+// @Description Queries the connection's external provider (e.g. MyAnimeList) and
+// @Description returns normalized media suggestions for the create-media autocomplete.
+// @Tags     connection
+// @Produce  json
+// @Param    id    path  string true  "Connection ID"
+// @Param    q     query string true  "Search query"
+// @Param    type  query string false "Media type (manga|video|novel)" default(manga)
+// @Param    limit query int    false "Max results (clamped 1..25)" default(10)
+// @Success  200 {array} domain.MediaSuggestion
+// @Failure  400 {object} handler.ErrorResponse
+// @Failure  401 {object} handler.ErrorResponse
+// @Failure  404 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/connections/{id}/search [get]
+func (h *ConnectionHandler) Search(ctx context.Context, c *app.RequestContext) {
+	kind := c.Query("type")
+	if kind == "" {
+		kind = string(domain.MediaManga)
+	}
+	res, err := h.svc.Search(ctx, c.Param("id"), c.Query("q"), kind, queryInt(c, "limit", 10))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writeOK(c, consts.StatusOK, res)
+}
+
 // Refresh godoc
 // @Summary  Refresh a connection's OAuth tokens.
 // @Tags     connection

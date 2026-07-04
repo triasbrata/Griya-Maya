@@ -36,6 +36,14 @@ type userRecord struct {
 	CreatedAt     int64  `json:"created_at"`
 }
 
+// userErrorBody documents the flat failure envelope for the /v1/users swagger
+// `@Failure` annotations. The wire body is a domain.APIResponse (see respondErr).
+type userErrorBody struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+	ErrorCode string `json:"error_code"`
+}
+
 type createUserRequest struct {
 	Email         string `json:"email"`
 	Name          string `json:"name"`

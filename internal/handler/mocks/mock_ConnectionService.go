@@ -415,6 +415,68 @@ func (_c *MockConnectionService_Refresh_Call) RunAndReturn(run func(context.Cont
 	return _c
 }
 
+// Search provides a mock function with given fields: ctx, id, query, kind, limit
+func (_m *MockConnectionService) Search(ctx context.Context, id string, query string, kind string, limit int) ([]domain.MediaSuggestion, error) {
+	ret := _m.Called(ctx, id, query, kind, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Search")
+	}
+
+	var r0 []domain.MediaSuggestion
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int) ([]domain.MediaSuggestion, error)); ok {
+		return rf(ctx, id, query, kind, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int) []domain.MediaSuggestion); ok {
+		r0 = rf(ctx, id, query, kind, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.MediaSuggestion)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, int) error); ok {
+		r1 = rf(ctx, id, query, kind, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockConnectionService_Search_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Search'
+type MockConnectionService_Search_Call struct {
+	*mock.Call
+}
+
+// Search is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - query string
+//   - kind string
+//   - limit int
+func (_e *MockConnectionService_Expecter) Search(ctx interface{}, id interface{}, query interface{}, kind interface{}, limit interface{}) *MockConnectionService_Search_Call {
+	return &MockConnectionService_Search_Call{Call: _e.mock.On("Search", ctx, id, query, kind, limit)}
+}
+
+func (_c *MockConnectionService_Search_Call) Run(run func(ctx context.Context, id string, query string, kind string, limit int)) *MockConnectionService_Search_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(int))
+	})
+	return _c
+}
+
+func (_c *MockConnectionService_Search_Call) Return(_a0 []domain.MediaSuggestion, _a1 error) *MockConnectionService_Search_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConnectionService_Search_Call) RunAndReturn(run func(context.Context, string, string, string, int) ([]domain.MediaSuggestion, error)) *MockConnectionService_Search_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function with given fields: ctx, id, req
 func (_m *MockConnectionService) Update(ctx context.Context, id string, req domain.ConnectionWriteRequest) (domain.Connection, error) {
 	ret := _m.Called(ctx, id, req)

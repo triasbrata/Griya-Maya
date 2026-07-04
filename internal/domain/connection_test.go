@@ -22,10 +22,74 @@ func TestProvider_Endpoints(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "https://myanimelist.net/v1/oauth2/authorize", e.AuthorizeURL)
 	assert.Equal(t, "https://myanimelist.net/v1/oauth2/token", e.TokenURL)
+	assert.Equal(t, "https://api.myanimelist.net/v2", e.APIBaseURL)
 	assert.Equal(t, "plain", e.ChallengeMethod)
 
 	_, ok = domain.Provider("imdb").Endpoints()
 	assert.False(t, ok)
+}
+
+func TestMALStatus_Manga(t *testing.T) {
+	cases := map[string]domain.MediaStatus{
+		"finished":             domain.StatusCompleted,
+		"currently_publishing": domain.StatusOngoing,
+		"on_hiatus":            domain.StatusHiatus,
+		"discontinued":         domain.StatusCancelled,
+		"not_yet_published":    domain.StatusUnknown,
+		"":                     domain.StatusUnknown,
+		"bogus":                domain.StatusUnknown,
+		// Anime statuses must NOT match under the manga vocabulary.
+		"currently_airing": domain.StatusUnknown,
+	}
+	for in, want := range cases {
+		assert.Equalf(t, want, domain.MALStatus(in, false), "manga status %q", in)
+	}
+}
+
+func TestMALStatus_Anime(t *testing.T) {
+	cases := map[string]domain.MediaStatus{
+		"finished_airing":  domain.StatusCompleted,
+		"currently_airing": domain.StatusOngoing,
+		"not_yet_aired":    domain.StatusUnknown,
+		"":                 domain.StatusUnknown,
+		"bogus":            domain.StatusUnknown,
+		// Manga statuses must NOT match under the anime vocabulary.
+		"finished":  domain.StatusUnknown,
+		"on_hiatus": domain.StatusUnknown,
+	}
+	for in, want := range cases {
+		assert.Equalf(t, want, domain.MALStatus(in, true), "anime status %q", in)
+	}
+}
+
+// TestMediaSuggestion_JSONContract locks the exact camelCase field names and
+// verifies the four taxonomy fields serialize as [] (never null) when non-nil.
+func TestMediaSuggestion_JSONContract(t *testing.T) {
+	s := domain.MediaSuggestion{
+		ExternalID:  "44347",
+		Title:       "One Piece",
+		Description: "desc",
+		CoverURL:    "https://img/large.jpg",
+		Status:      domain.StatusOngoing,
+		Genres:      []string{"Action"},
+		Categories:  []string{},
+		Authors:     []string{"Eiichiro Oda"},
+		Artists:     []string{},
+		URL:         "https://myanimelist.net/manga/44347",
+	}
+	raw, err := json.Marshal(s)
+	require.NoError(t, err)
+	got := string(raw)
+
+	for _, field := range []string{
+		`"externalId":"44347"`, `"title":"One Piece"`, `"description":"desc"`,
+		`"coverUrl":"https://img/large.jpg"`, `"status":"ongoing"`,
+		`"genres":["Action"]`, `"categories":[]`, `"authors":["Eiichiro Oda"]`,
+		`"artists":[]`, `"url":"https://myanimelist.net/manga/44347"`,
+	} {
+		assert.Truef(t, strings.Contains(got, field), "missing/incorrect field %s in %s", field, got)
+	}
+	assert.NotContains(t, got, "null")
 }
 
 func TestConnectionStatus_Consts(t *testing.T) {

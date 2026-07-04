@@ -85,6 +85,61 @@ func (r *MediaRepo) Search(ctx context.Context, sourceID, query string, page, pe
 	return toMediaPage(rows, page, perPage), nil
 }
 
+// Recommend ranks a source's media by how many of the requested genre slugs each
+// entry shares (descending), breaking ties by the catalog's default popular
+// ordering (popularity, then title). Media that share no requested genre, and any
+// id in exclude, are omitted. genres must be non-empty — the service falls back to
+// the popular feed otherwise, so an empty genre set never reaches here.
+//
+// The ranking runs entirely in SQL over the same normalized genre join tables the
+// genre filter uses (media_genre → genre), reusing the OR-mode EXISTS clause for
+// the "at least one shared genre" gate.
+func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, genres, exclude []string, page, perPage int) (domain.MediaPage, error) {
+	page, perPage = normPage(page, perPage)
+
+	genres = nonEmpty(genres)
+	genreTT, _ := taxTableFor(domain.TaxonomyGenre)
+
+	qb := newQueryBuilder()
+
+	// overlap = how many requested genre slugs this media carries; drives ranking.
+	overlap := overlapCount(qb, genreTT, genres)
+
+	where := "media.source_id = " + qb.bind(sourceID)
+	// Only rank media sharing at least one requested genre (zero-overlap dropped).
+	where += includeClause(qb, genreTT, genres, domain.GenreModeOr)
+	// Drop already-read / seed ids.
+	if exc := nonEmpty(exclude); len(exc) > 0 {
+		ph := make([]string, len(exc))
+		for i, id := range exc {
+			ph[i] = qb.bind(id)
+		}
+		where += " AND media.id NOT IN (" + strings.Join(ph, ", ") + ")"
+	}
+
+	sql := "SELECT " + mediaColumns + ", " + overlap + " AS overlap FROM media WHERE " + where +
+		" ORDER BY overlap DESC, popularity DESC, title ASC" +
+		" LIMIT " + qb.bind(perPage+1) + " OFFSET " + qb.bind((page-1)*perPage)
+
+	rows, err := r.db.Query(ctx, sql, qb.params...)
+	if err != nil {
+		return domain.MediaPage{}, err
+	}
+	return toMediaPage(rows, page, perPage), nil
+}
+
+// overlapCount renders a correlated subquery counting how many of slugs a media
+// carries in the genre taxonomy. Slugs are normalized with genreSlug so they line
+// up with the stored slugs, exactly like includeClause/excludeClause.
+func overlapCount(qb *queryBuilder, tt taxTable, slugs []string) string {
+	ph := make([]string, len(slugs))
+	for i, s := range slugs {
+		ph[i] = qb.bind(genreSlug(s))
+	}
+	return "(SELECT COUNT(DISTINCT t.slug) FROM " + tt.join + " j JOIN " + tt.table +
+		" t ON t.id = j." + tt.fk + " WHERE j.media_id = media.id AND t.slug IN (" + strings.Join(ph, ", ") + "))"
+}
+
 // Genres returns the distinct genres attached to a source's catalog, as
 // filterable tags (slug + name), sorted alphabetically.
 func (r *MediaRepo) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {

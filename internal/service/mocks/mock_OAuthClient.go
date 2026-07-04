@@ -84,6 +84,73 @@ func (_c *MockOAuthClient_Exchange_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
+// Get provides a mock function with given fields: ctx, url, accessToken
+func (_m *MockOAuthClient) Get(ctx context.Context, url string, accessToken string) ([]byte, int, error) {
+	ret := _m.Called(ctx, url, accessToken)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Get")
+	}
+
+	var r0 []byte
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]byte, int, error)); ok {
+		return rf(ctx, url, accessToken)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) []byte); ok {
+		r0 = rf(ctx, url, accessToken)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) int); ok {
+		r1 = rf(ctx, url, accessToken)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, string, string) error); ok {
+		r2 = rf(ctx, url, accessToken)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// MockOAuthClient_Get_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Get'
+type MockOAuthClient_Get_Call struct {
+	*mock.Call
+}
+
+// Get is a helper method to define mock.On call
+//   - ctx context.Context
+//   - url string
+//   - accessToken string
+func (_e *MockOAuthClient_Expecter) Get(ctx interface{}, url interface{}, accessToken interface{}) *MockOAuthClient_Get_Call {
+	return &MockOAuthClient_Get_Call{Call: _e.mock.On("Get", ctx, url, accessToken)}
+}
+
+func (_c *MockOAuthClient_Get_Call) Run(run func(ctx context.Context, url string, accessToken string)) *MockOAuthClient_Get_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockOAuthClient_Get_Call) Return(_a0 []byte, _a1 int, _a2 error) *MockOAuthClient_Get_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *MockOAuthClient_Get_Call) RunAndReturn(run func(context.Context, string, string) ([]byte, int, error)) *MockOAuthClient_Get_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Refresh provides a mock function with given fields: ctx, p, clientID, clientSecret, refreshToken
 func (_m *MockOAuthClient) Refresh(ctx context.Context, p domain.Provider, clientID string, clientSecret string, refreshToken string) (domain.TokenResponse, error) {
 	ret := _m.Called(ctx, p, clientID, clientSecret, refreshToken)

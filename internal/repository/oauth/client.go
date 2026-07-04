@@ -56,6 +56,31 @@ func (c *Client) Refresh(ctx context.Context, p domain.Provider, clientID, clien
 	return c.post(ctx, p, clientID, clientSecret, form)
 }
 
+// Get performs an authenticated GET against an already-built provider resource
+// URL, sending accessToken as a Bearer credential. It returns the raw response
+// body together with the HTTP status code (and does not treat non-2xx as an
+// error) so the caller can detect a 401 and drive a token refresh + retry.
+func (c *Client) Get(ctx context.Context, url, accessToken string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("oauth get %q: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("oauth get read body: %w", err)
+	}
+	return body, resp.StatusCode, nil
+}
+
 // post form-encodes the request to the provider's token URL and decodes the
 // token payload. Client credentials go in the request BODY (client_id +
 // client_secret), not an Authorization: Basic header: MyAnimeList's

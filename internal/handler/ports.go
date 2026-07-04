@@ -15,6 +15,7 @@ type MediaService interface {
 	Popular(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Search(ctx context.Context, sourceID, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
+	Recommendations(ctx context.Context, sourceID string, genres, exclude []string, page int) (domain.MediaPage, error)
 	Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Details(ctx context.Context, id string) (domain.Media, error)
@@ -69,4 +70,5 @@ type ConnectionService interface {
 	Authorize(ctx context.Context, id, redirectURI string) (string, error)
 	Callback(ctx context.Context, code, state string) (domain.Connection, error)
 	Refresh(ctx context.Context, id string) (domain.Connection, error)
+	Search(ctx context.Context, id, query, kind string, limit int) ([]domain.MediaSuggestion, error)
 }

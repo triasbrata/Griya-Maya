@@ -26,6 +26,9 @@ func (p Provider) Valid() bool {
 type ProviderEndpoints struct {
 	AuthorizeURL string
 	TokenURL     string
+	// APIBaseURL is the provider's authenticated resource API root (used for the
+	// search/autocomplete endpoint). Empty for providers without a searchable API.
+	APIBaseURL string
 	// ChallengeMethod is the PKCE method: "plain" or "S256". MyAnimeList only
 	// supports "plain" (code_challenge == code_verifier).
 	ChallengeMethod string
@@ -36,6 +39,7 @@ var providerEndpoints = map[Provider]ProviderEndpoints{
 	ProviderMyAnimeList: {
 		AuthorizeURL:    "https://myanimelist.net/v1/oauth2/authorize",
 		TokenURL:        "https://myanimelist.net/v1/oauth2/token",
+		APIBaseURL:      "https://api.myanimelist.net/v2",
 		ChallengeMethod: "plain",
 	},
 }
@@ -99,6 +103,57 @@ type TokenResponse struct {
 	RefreshToken string
 	TokenType    string
 	ExpiresIn    int64
+}
+
+// MediaSuggestion is one normalized search hit returned from a connection's
+// external provider (e.g. MyAnimeList) for the admin create-media autocomplete.
+// The JSON shape is a camelCase contract consumed by the admin panel; the four
+// taxonomy fields are ALWAYS emitted as arrays (never null) so the client can
+// bind them without null checks.
+type MediaSuggestion struct {
+	ExternalID  string      `json:"externalId"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	CoverURL    string      `json:"coverUrl"`
+	Status      MediaStatus `json:"status"`
+	Genres      []string    `json:"genres"`
+	Categories  []string    `json:"categories"`
+	Authors     []string    `json:"authors"`
+	Artists     []string    `json:"artists"`
+	URL         string      `json:"url"`
+}
+
+// MALStatus maps a MyAnimeList publication/airing status to the server's
+// MediaStatus enum. isAnime selects the anime (video) vocabulary; otherwise the
+// manga/light-novel vocabulary is used. Unrecognized values map to
+// StatusUnknown so the caller always gets a valid enum string.
+func MALStatus(malStatus string, isAnime bool) MediaStatus {
+	if isAnime {
+		switch malStatus {
+		case "finished_airing":
+			return StatusCompleted
+		case "currently_airing":
+			return StatusOngoing
+		case "not_yet_aired":
+			return StatusUnknown
+		default:
+			return StatusUnknown
+		}
+	}
+	switch malStatus {
+	case "finished":
+		return StatusCompleted
+	case "currently_publishing":
+		return StatusOngoing
+	case "on_hiatus":
+		return StatusHiatus
+	case "discontinued":
+		return StatusCancelled
+	case "not_yet_published":
+		return StatusUnknown
+	default:
+		return StatusUnknown
+	}
 }
 
 // AuthState is the PKCE/state bundle persisted between the authorize redirect

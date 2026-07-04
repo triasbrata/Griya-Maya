@@ -83,6 +83,41 @@ func TestMediaHandler_Search(t *testing.T) {
 	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
 }
 
+func TestMediaHandler_Recommendations_ParsesParams(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	page := domain.MediaPage{Items: []domain.Media{{ID: "m1"}}, Page: 2, HasNext: true}
+	// genres/exclude are comma-joinable csv; page is 1-based.
+	svc.EXPECT().
+		Recommendations(mock.Anything, "src", []string{"action", "comedy"}, []string{"seed1", "seed2"}, 2).
+		Return(page, nil)
+
+	c := newCtx("GET",
+		"/v1/sources/src/recommendations?genres=action,comedy&exclude=seed1,seed2&page=2",
+		map[string]string{"sourceId": "src"}, nil, "")
+	h.Recommendations(context.Background(), c)
+
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var got domain.MediaPage
+	decodeJSON(t, c, &got)
+	assert.Equal(t, page, got)
+	// Pagination metadata rides in headers, like the other list feeds.
+	assert.Equal(t, "true", string(c.Response.Header.Peek(handler.HdrPaginationHasNext)))
+}
+
+func TestMediaHandler_Recommendations_DefaultsAndError(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	// No genres/exclude/page → empty slices + page 1; error maps to status.
+	svc.EXPECT().
+		Recommendations(mock.Anything, "src", []string(nil), []string(nil), 1).
+		Return(domain.MediaPage{}, domain.ErrNotFound)
+
+	c := newCtx("GET", "/v1/sources/src/recommendations", map[string]string{"sourceId": "src"}, nil, "")
+	h.Recommendations(context.Background(), c)
+	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
+}
+
 func TestMediaHandler_Genres(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 

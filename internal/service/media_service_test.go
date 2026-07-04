@@ -62,6 +62,33 @@ func TestMediaService_Search_DelegatesToSearch(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+func TestMediaService_Recommendations_DelegatesToRecommend(t *testing.T) {
+	svc, repo, _ := newMediaSvc(t, "")
+	ctx := context.Background()
+	genres := []string{"Action", "Comedy"}
+	exclude := []string{"seed1"}
+	want := domain.MediaPage{Items: []domain.Media{{ID: "m1"}}, Page: 2}
+
+	repo.EXPECT().Recommend(ctx, "src", genres, exclude, 2, 30).Return(want, nil)
+
+	got, err := svc.Recommendations(ctx, "src", genres, exclude, 2)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+}
+
+func TestMediaService_Recommendations_FallsBackToPopularWhenNoGenres(t *testing.T) {
+	svc, repo, _ := newMediaSvc(t, "")
+	ctx := context.Background()
+	want := domain.MediaPage{Items: []domain.Media{{ID: "pop"}}, Page: 1}
+
+	// No genres → the source's popular feed, so the endpoint always returns something.
+	repo.EXPECT().List(ctx, "src", "popular", 1, 30, domain.CatalogFilter{}).Return(want, nil)
+
+	got, err := svc.Recommendations(ctx, "src", nil, []string{"seed1"}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+}
+
 func TestMediaService_GenresAndCategories(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
@@ -195,14 +222,27 @@ func TestMediaService_CreateMedia_DefaultsTypeToManga(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMediaService_CreateMedia_DefaultsURLToID(t *testing.T) {
+	svc, repo, _ := newMediaSvc(t, "")
+	ctx := context.Background()
+
+	// URL omitted → the service fills it with the generated id.
+	repo.EXPECT().CreateMedia(ctx, mock.MatchedBy(func(m domain.Media) bool {
+		return m.URL != "" && m.URL == m.ID
+	})).Return(nil)
+	repo.EXPECT().Get(ctx, mock.Anything).Return(domain.Media{}, nil)
+
+	_, err := svc.CreateMedia(ctx, domain.MediaWriteRequest{SourceID: "src", Title: "T"})
+	require.NoError(t, err)
+}
+
 func TestMediaService_CreateMedia_Validation(t *testing.T) {
 	svc, _, _ := newMediaSvc(t, "")
 	ctx := context.Background()
 
 	cases := []domain.MediaWriteRequest{
-		{URL: "u", Title: "T"},        // missing sourceId
-		{SourceID: "src", URL: "u"},   // missing title
-		{SourceID: "src", Title: "T"}, // missing url
+		{URL: "u", Title: "T"},      // missing sourceId
+		{SourceID: "src", URL: "u"}, // missing title
 		{SourceID: "src", URL: "u", Title: "T", Type: domain.MediaType("x")}, // bad type
 	}
 	for _, req := range cases {

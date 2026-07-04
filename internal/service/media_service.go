@@ -46,6 +46,18 @@ func (s *MediaService) Search(ctx context.Context, sourceID, query string, page 
 	return s.repo.Search(ctx, sourceID, query, page, domain.CatalogPageSize, filter)
 }
 
+// Recommendations returns content-based recommendations for a source: its
+// catalog ranked by genre overlap with genres (which the client aggregates from
+// the user's recent reading — history stays on the client). Media whose id is in
+// exclude, or that share no requested genre, are omitted. With no genres it falls
+// back to the source's popular feed so the endpoint always returns something.
+func (s *MediaService) Recommendations(ctx context.Context, sourceID string, genres, exclude []string, page int) (domain.MediaPage, error) {
+	if len(genres) == 0 {
+		return s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, domain.CatalogFilter{})
+	}
+	return s.repo.Recommend(ctx, sourceID, genres, exclude, page, domain.CatalogPageSize)
+}
+
 // Genres lists the distinct filterable genres seen across a source's catalog.
 func (s *MediaService) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
 	return s.repo.Genres(ctx, sourceID)
@@ -111,11 +123,10 @@ func (s *MediaService) Pages(ctx context.Context, chapterID string) ([]domain.Pa
 // CreateMedia validates and persists a new media entry, returning the stored
 // (normalized) row.
 func (s *MediaService) CreateMedia(ctx context.Context, req domain.MediaWriteRequest) (domain.Media, error) {
-	m, err := mediaFromRequest("", req)
+	m, err := mediaFromRequest(uuid.NewString(), req)
 	if err != nil {
 		return domain.Media{}, err
 	}
-	m.ID = uuid.NewString()
 	if err := s.repo.CreateMedia(ctx, m); err != nil {
 		return domain.Media{}, fmt.Errorf("create media: %w", err)
 	}
@@ -154,8 +165,12 @@ func mediaFromRequest(id string, req domain.MediaWriteRequest) (domain.Media, er
 	if strings.TrimSpace(req.Title) == "" {
 		return domain.Media{}, fmt.Errorf("%w: title is required", domain.ErrInvalidInput)
 	}
-	if strings.TrimSpace(req.URL) == "" {
-		return domain.Media{}, fmt.Errorf("%w: url is required", domain.ErrInvalidInput)
+	// URL is the entry's identifier in the Mihon source contract. This is a
+	// self-hosted catalog (the "source" is us), so operators don't invent a
+	// source URL — default it to the id, which the reader can address directly.
+	url := strings.TrimSpace(req.URL)
+	if url == "" {
+		url = id
 	}
 	mtype := req.Type
 	if mtype == "" {
@@ -174,7 +189,7 @@ func mediaFromRequest(id string, req domain.MediaWriteRequest) (domain.Media, er
 		ID:          id,
 		SourceID:    req.SourceID,
 		Type:        mtype,
-		URL:         req.URL,
+		URL:         url,
 		Title:       req.Title,
 		CoverURL:    req.CoverURL,
 		Description: req.Description,

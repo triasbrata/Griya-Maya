@@ -175,3 +175,37 @@ func TestConnectionHandler_Refresh_Error(t *testing.T) {
 	h.Refresh(context.Background(), c)
 	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
 }
+
+func TestConnectionHandler_Search(t *testing.T) {
+	h, svc := newConnectionHandler(t)
+	// type + limit are parsed from the query string and forwarded to the service.
+	svc.EXPECT().Search(mock.Anything, "c1", "one piece", "video", 5).
+		Return([]domain.MediaSuggestion{{ExternalID: "13", Title: "One Piece"}}, nil)
+	c := newCtx("GET", "/v1/connections/c1/search?q=one+piece&type=video&limit=5", map[string]string{"id": "c1"}, nil, "")
+	h.Search(context.Background(), c)
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var got []domain.MediaSuggestion
+	decodeJSON(t, c, &got)
+	require.Len(t, got, 1)
+	assert.Equal(t, "13", got[0].ExternalID)
+}
+
+func TestConnectionHandler_Search_DefaultsTypeAndLimit(t *testing.T) {
+	h, svc := newConnectionHandler(t)
+	// Missing type → "manga", missing limit → 10.
+	svc.EXPECT().Search(mock.Anything, "c1", "naruto", "manga", 10).
+		Return([]domain.MediaSuggestion{}, nil)
+	c := newCtx("GET", "/v1/connections/c1/search?q=naruto", map[string]string{"id": "c1"}, nil, "")
+	h.Search(context.Background(), c)
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+}
+
+func TestConnectionHandler_Search_EmptyQuery(t *testing.T) {
+	h, svc := newConnectionHandler(t)
+	// Empty q → service returns ErrInvalidInput → 400 envelope.
+	svc.EXPECT().Search(mock.Anything, "c1", "", "manga", 10).Return(nil, domain.ErrInvalidInput)
+	c := newCtx("GET", "/v1/connections/c1/search", map[string]string{"id": "c1"}, nil, "")
+	h.Search(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+	assert.Equal(t, "invalid_input", decodeError(t, c).ErrorCode)
+}

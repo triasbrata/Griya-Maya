@@ -140,7 +140,7 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 - `ports.go` — `MediaService`/`TaxonomyService`/`ConvertService`/`VideoService`/`NovelService` interfaces (what handlers depend on).
 - `response.go` — `ErrorResponse`, `writeError`, status mapping, `parseCatalogFilter` (type/genre/category query params).
 - `health_handler.go` — `/healthz`.
-- `media_handler.go` — catalog (`popular/latest/search/genres/categories/details/chapters`), reader (`pages`), gated `image` proxy, and media/chapter CRUD.
+- `media_handler.go` — catalog (`popular/latest/search/recommendations/genres/categories/details/chapters`), reader (`pages`), gated `image` proxy, and media/chapter CRUD.
 - `taxonomy_handler.go` — genre/category/author/artist CRUD via `/v1/taxonomies/{kind}`.
 - `convert_handler.go` — `upload` / `convert` / `jobs/:id`.
 - `video_handler.go` — HLS `upload` / `register` / `stream`.
@@ -158,7 +158,7 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 
 **Persistence — `internal/repository`**
 - `d1/client.go` — D1 REST client + `Querier` usage; row-value decoding.
-- `d1/media_repo.go` — catalog reads (list/search/genres/categories/get/chapters/pages), filter→SQL builder (type column + genre/category EXISTS joins), media/chapter writes, and taxonomy CRUD (`taxTableFor` routes the 4 kinds). Taxonomies reassembled per-row via `group_concat(...,char(31))` subqueries.
+- `d1/media_repo.go` — catalog reads (list/search/recommend/genres/categories/get/chapters/pages), filter→SQL builder (type column + genre/category EXISTS joins), media/chapter writes, and taxonomy CRUD (`taxTableFor` routes the 4 kinds). Taxonomies reassembled per-row via `group_concat(...,char(31))` subqueries.
 - `d1/job_repo.go` — convert-job lifecycle + `ReplacePages`.
 - `d1/ports.go` — `Querier` interface (mocked for repo tests).
 - `d1/mocks/` — **generated**.

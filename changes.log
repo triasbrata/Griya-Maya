@@ -289,3 +289,61 @@ for the required entry format.
 - Notes: NOT deployed; no wrangler run. Cause #2 (admin token missing the new
   connections.write scope → 401/403 at the gate) is a re-login on the admin side,
   left to the team lead pending the user's callback Response capture.
+
+## 2026-07-05 — MAL connection search endpoint (create-media autocomplete)
+- What:
+  - Added `GET /v1/connections/:id/search?q=&type=manga|video|novel&limit=` (in
+    the connections.write group). Queries a stored MyAnimeList connection's
+    resource API with the decrypted access token as a Bearer credential and
+    returns normalized `domain.MediaSuggestion[]` in the standard success
+    envelope. type→endpoint: manga/novel→/manga, video→/anime; limit defaults 10,
+    clamped 1..25; empty q → 400.
+  - On a MAL 401, refreshes tokens via the existing `Refresh`/`persistTokens`
+    plumbing, persists, and retries the search once; a persistent 401 surfaces a
+    clean ErrUnauthorized envelope.
+  - Normalization: externalId=id, description=synopsis, cover=large||medium||"",
+    status via new `domain.MALStatus` (manga+anime vocabularies), genres[].name,
+    manga author role split (Story→authors, Art→artists, "Story & Art"→both),
+    anime studios→authors, categories always []. Taxonomy fields always emit [].
+- Why: admin create-media page needs MAL-backed autocomplete (client contract
+  already built and consuming this exact shape).
+- Files: internal/domain/connection.go (APIBaseURL field + MAL value,
+  MediaSuggestion, MALStatus); internal/repository/oauth/client.go (authenticated
+  Get returning body+status); internal/service/ports.go (OAuthClient.Get);
+  internal/service/connection_search.go (new: Search + MAL decode/normalize);
+  internal/handler/ports.go + internal/handler/connection_handler.go (Search);
+  internal/server/router.go (route); internal/oidc/user_admin.go (define the
+  pre-existing-undefined `userErrorBody` swagger type so `make docs` runs);
+  regenerated service/handler mocks + swagger.
+- Tests: added domain (status maps manga+anime, APIBaseURL, MediaSuggestion JSON
+  contract), service (manga/anime/novel normalization, role split, studios,
+  endpoint+limit selection, 401-refresh-retry, still-401, error paths), handler
+  (search + type/limit defaults + empty-q 400). `go build ./...`, `go vet ./...`
+  clean, gofmt clean. `go test ./...` → 235 pass, 0 fail. Coverage: domain 93.9%,
+  service 88.9%, handler 88.6% (all ≥80%); oauth 59.0% (coverage-exempt infra).
+- Notes: NOT deployed. Deploy step = redeploy the Worker/container (`make deploy`);
+  no migration, no new secret/env. Fixed a pre-existing `make docs` blocker
+  (undefined `oidc.userErrorBody` referenced by committed /v1/users annotations).
+
+## 2026-07-05 — Content-based recommendations catalog endpoint
+- What: Added a public `GET /v1/sources/{sourceId}/recommendations?genres=<csv>&exclude=<csv>&page=<n>`
+  list endpoint that mirrors popular/latest (same envelope + X-Pagination-* headers).
+  Ranks a source's media by genre-overlap count with `genres` (desc), tie-broken by
+  the popular order (popularity, title); drops zero-overlap and any `exclude` id;
+  empty `genres` falls back to the source's popular feed.
+- Why: powers the iOS client's "because you read…" rail; the client aggregates
+  genres from local reading history (history stays on-device) and passes them in.
+- Files: internal/repository/d1/media_repo.go (Recommend query + overlapCount helper,
+  SQL over media_genre/genre join tables, reuses OR-mode includeClause for the
+  zero-overlap gate); internal/service/ports.go (MediaRepository.Recommend);
+  internal/service/media_service.go (Recommendations + popular fallback);
+  internal/handler/ports.go (MediaService.Recommendations);
+  internal/handler/media_handler.go (Recommendations handler + swagger);
+  internal/server/router.go (public catalog route); regenerated service/handler
+  mocks + swagger (`make docs`).
+- Tests: added repo (overlap SQL/ORDER BY/EXISTS/NOT IN + normalized-slug params,
+  no-exclude, error), service (delegate + no-genres popular fallback), handler
+  (csv genres/exclude/page parsing + pagination header, defaults + error). `go build`,
+  `go vet`, gofmt clean; `go test ./...` → 236 pass. Coverage: domain 93.9%,
+  service 88.9%, handler 88.6%, repository/d1 83.7% (all ≥80%).
+- Notes: NOT deployed. No migration, no new env/secret. Deploy = `make deploy`.

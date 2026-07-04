@@ -729,6 +729,67 @@ func (_c *MockMediaRepository_Pages_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// Recommend provides a mock function with given fields: ctx, sourceID, genres, exclude, page, perPage
+func (_m *MockMediaRepository) Recommend(ctx context.Context, sourceID string, genres []string, exclude []string, page int, perPage int) (domain.MediaPage, error) {
+	ret := _m.Called(ctx, sourceID, genres, exclude, page, perPage)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Recommend")
+	}
+
+	var r0 domain.MediaPage
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int, int) (domain.MediaPage, error)); ok {
+		return rf(ctx, sourceID, genres, exclude, page, perPage)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int, int) domain.MediaPage); ok {
+		r0 = rf(ctx, sourceID, genres, exclude, page, perPage)
+	} else {
+		r0 = ret.Get(0).(domain.MediaPage)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, []string, []string, int, int) error); ok {
+		r1 = rf(ctx, sourceID, genres, exclude, page, perPage)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaRepository_Recommend_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Recommend'
+type MockMediaRepository_Recommend_Call struct {
+	*mock.Call
+}
+
+// Recommend is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceID string
+//   - genres []string
+//   - exclude []string
+//   - page int
+//   - perPage int
+func (_e *MockMediaRepository_Expecter) Recommend(ctx interface{}, sourceID interface{}, genres interface{}, exclude interface{}, page interface{}, perPage interface{}) *MockMediaRepository_Recommend_Call {
+	return &MockMediaRepository_Recommend_Call{Call: _e.mock.On("Recommend", ctx, sourceID, genres, exclude, page, perPage)}
+}
+
+func (_c *MockMediaRepository_Recommend_Call) Run(run func(ctx context.Context, sourceID string, genres []string, exclude []string, page int, perPage int)) *MockMediaRepository_Recommend_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].([]string), args[3].([]string), args[4].(int), args[5].(int))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_Recommend_Call) Return(_a0 domain.MediaPage, _a1 error) *MockMediaRepository_Recommend_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaRepository_Recommend_Call) RunAndReturn(run func(context.Context, string, []string, []string, int, int) (domain.MediaPage, error)) *MockMediaRepository_Recommend_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Search provides a mock function with given fields: ctx, sourceID, query, page, perPage, filter
 func (_m *MockMediaRepository) Search(ctx context.Context, sourceID string, query string, page int, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error) {
 	ret := _m.Called(ctx, sourceID, query, page, perPage, filter)

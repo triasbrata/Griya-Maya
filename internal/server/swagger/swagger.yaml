@@ -171,7 +171,15 @@ components:
         sourceId:
           type: string
         status:
-          $ref: '#/components/schemas/domain.MediaStatus'
+          type: string
+          x-enum-varnames:
+          - StatusUnknown
+          - StatusOngoing
+          - StatusCompleted
+          - StatusLicensed
+          - StatusHiatus
+          - StatusCancelled
+          - StatusPublishing
         title:
           type: string
         type:
@@ -203,6 +211,41 @@ components:
       - StatusHiatus
       - StatusCancelled
       - StatusPublishing
+    domain.MediaSuggestion:
+      properties:
+        artists:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        authors:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        categories:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        coverUrl:
+          type: string
+        description:
+          type: string
+        externalId:
+          type: string
+        genres:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        status:
+          $ref: '#/components/schemas/domain.MediaStatus'
+        title:
+          type: string
+        url:
+          type: string
+      type: object
     domain.MediaType:
       type: string
       x-enum-varnames:
@@ -256,6 +299,9 @@ components:
           - MediaVideo
           - MediaNovel
         url:
+          description: |-
+            URL identifies the entry in the Mihon source contract. Optional on write:
+            when omitted, the service defaults it to the generated media id.
           type: string
       type: object
     domain.NovelRegisterRequest:
@@ -325,10 +371,12 @@ components:
       type: object
     handler.ErrorResponse:
       properties:
-        error:
+        error_code:
           type: string
         message:
           type: string
+        success:
+          type: boolean
       type: object
     handler.UploadResponse:
       properties:
@@ -395,6 +443,17 @@ components:
         token_endpoint_auth_method:
           type: string
       type: object
+    oidc.createUserRequest:
+      properties:
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        name:
+          type: string
+        password:
+          type: string
+      type: object
     oidc.dcrErrorResponse:
       properties:
         error:
@@ -438,6 +497,40 @@ components:
         scope:
           type: string
         token_endpoint_auth_method:
+          type: string
+      type: object
+    oidc.updateUserRequest:
+      properties:
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        name:
+          type: string
+        password:
+          description: optional; blank leaves it unchanged
+          type: string
+      type: object
+    oidc.userErrorBody:
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        success:
+          type: boolean
+      type: object
+    oidc.userRecord:
+      properties:
+        created_at:
+          type: integer
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        id:
+          type: string
+        name:
           type: string
       type: object
     service.ConvertResult:
@@ -910,6 +1003,68 @@ paths:
       security:
       - BearerAuth: []
       summary: Refresh a connection's OAuth tokens.
+      tags:
+      - connection
+  /v1/connections/{id}/search:
+    get:
+      description: |-
+        Queries the connection's external provider (e.g. MyAnimeList) and
+        returns normalized media suggestions for the create-media autocomplete.
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        schema:
+          type: string
+      - description: Media type (manga|video|novel)
+        in: query
+        name: type
+        schema:
+          default: manga
+          type: string
+      - description: Max results (clamped 1..25)
+        in: query
+        name: limit
+        schema:
+          default: 10
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.MediaSuggestion'
+                type: array
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Search a connection's provider for media suggestions.
       tags:
       - connection
   /v1/connections/callback:
@@ -1469,6 +1624,45 @@ paths:
       summary: Popular media for a source
       tags:
       - catalog
+  /v1/sources/{sourceId}/recommendations:
+    get:
+      description: Ranks a source's catalog by genre overlap with the supplied genres
+        (aggregated client-side from recent reading; history stays on the client),
+        most-overlap first, tie-broken by the popular order. Media sharing no requested
+        genre, and any id in exclude, are omitted. With no genres it falls back to
+        the source's popular feed.
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        schema:
+          type: string
+      - description: Comma-separated genre slugs/names to match
+        in: query
+        name: genres
+        schema:
+          type: string
+      - description: Comma-separated media ids to omit (already-read / seed)
+        in: query
+        name: exclude
+        schema:
+          type: string
+      - description: Page (1-based)
+        in: query
+        name: page
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.MediaPage'
+          description: OK
+      summary: Content-based recommendations for a source
+      tags:
+      - catalog
   /v1/sources/{sourceId}/search:
     get:
       parameters:
@@ -1763,6 +1957,166 @@ paths:
       summary: Rename a taxonomy tag.
       tags:
       - taxonomy
+  /v1/users:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/oidc.userRecord'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List admin users
+      tags:
+      - users
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/oidc.createUserRequest'
+        description: New user
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userRecord'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Bad Request
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Conflict
+      security:
+      - BearerAuth: []
+      summary: Create an admin user
+      tags:
+      - users
+  /v1/users/{id}:
+    delete:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Conflict
+      security:
+      - BearerAuth: []
+      summary: Delete an admin user
+      tags:
+      - users
+    get:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userRecord'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Get an admin user
+      tags:
+      - users
+    put:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/oidc.updateUserRequest'
+        description: Updated fields
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userRecord'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Conflict
+      security:
+      - BearerAuth: []
+      summary: Update an admin user
+      tags:
+      - users
   /v1/video:
     post:
       requestBody:
