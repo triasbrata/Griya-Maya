@@ -34,9 +34,10 @@ type RouterParams struct {
 	Health   *handler.HealthHandler
 	Media    *handler.MediaHandler
 	Taxonomy *handler.TaxonomyHandler
-	Convert  *handler.ConvertHandler
-	Video    *handler.VideoHandler
-	Novel    *handler.NovelHandler
+	Convert    *handler.ConvertHandler
+	Video      *handler.VideoHandler
+	Novel      *handler.NovelHandler
+	Connection *handler.ConnectionHandler
 }
 
 // New builds the Hertz server and registers all routes.
@@ -119,6 +120,17 @@ func New(p RouterParams) *server.Hertz {
 		manage.POST("/taxonomies/:kind", p.Taxonomy.Create)
 		manage.PUT("/taxonomies/:kind/:id", p.Taxonomy.Update)
 		manage.DELETE("/taxonomies/:kind/:id", p.Taxonomy.Delete)
+
+		// External-source OAuth connections (MyAnimeList first). The authorize →
+		// callback → refresh flow stores encrypted tokens for later use.
+		manage.POST("/connections", p.Connection.Create)
+		manage.GET("/connections", p.Connection.List)
+		manage.GET("/connections/:id", p.Connection.Get)
+		manage.PUT("/connections/:id", p.Connection.Update)
+		manage.DELETE("/connections/:id", p.Connection.Delete)
+		manage.POST("/connections/:id/authorize", p.Connection.Authorize)
+		manage.POST("/connections/callback", p.Connection.Callback)
+		manage.POST("/connections/:id/refresh", p.Connection.Refresh)
 	}
 
 	// Conversion (protected by the OIDC access-token middleware).

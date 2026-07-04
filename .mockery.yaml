@@ -16,6 +16,9 @@ packages:
       JobRepository:
       ObjectStore:
       ArchiveConverter:
+      ConnectionRepository:
+      OAuthClient:
+      StateStore:
   github.com/triasbrata/mihon-manga-server/internal/handler:
     interfaces:
       MediaService:
@@ -23,6 +26,7 @@ packages:
       ConvertService:
       VideoService:
       NovelService:
+      ConnectionService:
   github.com/triasbrata/mihon-manga-server/internal/repository/d1:
     interfaces:
       Querier:

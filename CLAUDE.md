@@ -245,3 +245,25 @@ lib, gate it behind a build tag with a stub fallback like `pdf_mupdf.go` / `pdf_
   presigned URLs gated by `manga.read`.
 - **Don't** route page bytes back through the container proxy — that path
   (`/v1/image`) is retired behind the read gate.
+
+---
+
+## 6. Sibling repos
+
+This server is one of three repos in the GriyaMedia system. The other two live
+alongside it as siblings of this repo's directory:
+
+| Repo | Path | What it is |
+|---|---|---|
+| **griyamedia-admin** | `../griyamedia-admin/` | Admin panel (TanStack Start → Cloudflare Workers). Authenticates against this server's embedded OP (`authorization_code` + PKCE, public client `admin-web`) and drives the protected media/video/novel/convert API. |
+| **mihon / GriyaMedia IOS** | `../mihon/` | The iOS reader app (Mihon fork). Consumes this server's `SourceRuntime`-shaped API as its content source. |
+
+**Rule: when a task requires checking, cross-referencing, or changing anything in
+a sibling repo, spawn a sub-agent to read that repo's own `CLAUDE.md` first** —
+don't grep it blind from here. Each sibling has its own conventions, file map, and
+workflow rules that its `CLAUDE.md` documents. Launch a `general-purpose` (or
+`Explore`) agent pointed at the sibling path and have it read
+`../griyamedia-admin/CLAUDE.md` or `../mihon/CLAUDE.md` before answering. This
+keeps their guidance authoritative and avoids polluting this repo's context with
+their file trees. When several siblings are involved, spawn the agents in
+parallel.

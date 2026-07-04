@@ -56,3 +56,60 @@ for the required entry format.
 - Tests: rewrote repo/service/handler tests, added client + novel + taxonomy +
   CRUD + error-path coverage. `go build/vet` clean; `go test ./...` → 159 pass;
   gated pkg coverage: domain 100%, service 89.8%, handler 88.2%, d1 82.2% (all ≥80%).
+
+## 2026-07-04 — Document sibling repos + spawn-agent rule in CLAUDE.md
+- What: Added "6. Sibling repos" section mapping ../griyamedia-admin/ and ../mihon/, with a rule to spawn a sub-agent to read a sibling's own CLAUDE.md before cross-referencing/changing it.
+- Why: Keep each repo's conventions authoritative and avoid polluting this repo's context with sibling file trees.
+- Files: CLAUDE.md
+- Tests: n/a (docs only)
+
+## 2026-07-04 — Add Connections entity (external-source OAuth: MyAnimeList)
+- What:
+  - New `connection` domain/entity storing OAuth creds+tokens per external
+    provider (MyAnimeList now; IMDB is a one-line registry addition). Full CRUD
+    plus PKCE authorize → callback → refresh flow under `/v1/connections` (write-
+    gated). Secrets/tokens are AES-256-GCM encrypted at rest and redacted from
+    every response via `json:"-"`.
+  - Provider endpoint registry lives in `domain` (single source of truth shared
+    by the service's authorize-URL builder and the outbound OAuth client) so the
+    repository layer does not import service (keeps strict downward layering).
+  - KV-backed single-use StateStore for PKCE state; migration 0005; new secret
+    `CONNECTIONS_ENC_KEY` (32-byte, validated) wired through config/worker/env.
+- Why: Frontend needs a managed store of external-source OAuth connections.
+- Files: internal/domain/connection.go; migrations/0005_connections.sql;
+  internal/repository/d1/connection_repo.go; internal/repository/oauth/client.go;
+  internal/repository/kv/state_store.go; internal/service/{crypto,oauth_providers,
+  connection_service,ports}.go; internal/handler/{connection_handler,ports}.go;
+  internal/server/router.go; internal/app/module.go; internal/config/config.go;
+  worker/index.ts; wrangler.jsonc; .env.example; .mockery.yaml + regenerated
+  mocks + swagger.
+- Tests: added domain (Valid/consts/endpoints/JSON-redaction), d1 repo (CRUD +
+  SaveTokens SQL/params), service (crypto round-trip + Create/Update/Authorize/
+  Callback/Refresh incl. encryption + error paths), handler (status codes, bind
+  errors, writeError mapping, response redaction). `go build/vet` clean;
+  `go test ./...` → 205 pass; gated pkg coverage: domain 100%, service 88.7%,
+  handler 87.9%, d1 82.7% (all ≥80%).
+- Notes: FOLLOW-UPS for the user (not done here) — apply migration
+  `wrangler d1 execute manga --file=migrations/0005_connections.sql`,
+  `wrangler secret put CONNECTIONS_ENC_KEY` (32 bytes), then deploy.
+  `make cover` errors in this env with `go: no such tool "covdata"` (pre-existing
+  toolchain issue in the merge step, unrelated to this change); per-package
+  `go test -cover` numbers above are authoritative. Deviations: (1) provider
+  endpoint registry placed in `domain` rather than `internal/service/
+  oauth_providers.go` to avoid the repository→service upward import the strict
+  layering rule forbids (service still owns authorize-URL construction in
+  oauth_providers.go); (2) client_id is stored/served in plaintext (not a secret,
+  present in the JSON contract), so only client_secret/tokens are encrypted.
+
+## 2026-07-04 — Edge CORS for the admin panel
+- What: worker/index.ts now answers the browser CORS preflight (OPTIONS → 204)
+  and appends Access-Control-Allow-* to forwarded responses, echoing the Origin
+  only when it is in an allowlist. Allowlist defaults to the admin prod origin +
+  localhost:3000, overridable via the new CORS_ALLOW_ORIGINS var (wrangler.jsonc).
+- Why: admin panel is a different origin than the API, so authenticated calls
+  (Authorization header) are preflighted. The Go/Hertz server registers no OPTIONS
+  routes and no CORS middleware, so preflights 404'd and browsers blocked every
+  cross-origin call (surfaced on GET /v1/connections).
+- Files: worker/index.ts, wrangler.jsonc
+- Tests: n/a (edge Worker glue, exempt from the Go 80% bar); `esbuild --bundle`
+  of worker/index.ts succeeds. Redeploy required (`bun run deploy` / wrangler).

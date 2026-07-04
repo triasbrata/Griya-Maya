@@ -15,12 +15,13 @@ import (
 
 // Config is the fully-resolved runtime configuration.
 type Config struct {
-	HTTP  HTTPConfig
-	D1    D1Config
-	R2    R2Config
-	KV    KVConfig
-	OIDC  OIDCConfig
-	Image ImageConfig
+	HTTP        HTTPConfig
+	D1          D1Config
+	R2          R2Config
+	KV          KVConfig
+	OIDC        OIDCConfig
+	Image       ImageConfig
+	Connections ConnectionsConfig
 }
 
 // HTTPConfig controls the Hertz server.
@@ -88,6 +89,14 @@ type OIDCConfig struct {
 	IOSRedirectURIs []string
 }
 
+// ConnectionsConfig configures external-source OAuth connection storage.
+type ConnectionsConfig struct {
+	// EncKey is a 32-byte key (AES-256-GCM) used to encrypt connection secrets
+	// and tokens at rest in D1. It is a SECRET (provision via
+	// `wrangler secret put CONNECTIONS_ENC_KEY`).
+	EncKey string
+}
+
 // ImageConfig tunes AVIF conversion output.
 type ImageConfig struct {
 	// Quality is the AVIF quality (0-100).
@@ -145,6 +154,9 @@ func Load() (Config, error) {
 			MaxEdge:        envInt("AVIF_MAX_EDGE", 2048),
 			ConvertTimeout: time.Duration(envInt("CONVERT_TIMEOUT_SEC", 600)) * time.Second,
 		},
+		Connections: ConnectionsConfig{
+			EncKey: env("CONNECTIONS_ENC_KEY", "dev-insecure-32-byte-conn-key!!!"),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -161,6 +173,10 @@ func (c Config) validate() error {
 	}
 	if c.Image.Speed < 0 || c.Image.Speed > 10 {
 		return fmt.Errorf("AVIF_SPEED must be 0..10, got %d", c.Image.Speed)
+	}
+	// AES-256-GCM needs exactly a 32-byte key (mirrors OIDC_CRYPTO_KEY).
+	if len(c.Connections.EncKey) != 32 {
+		return fmt.Errorf("CONNECTIONS_ENC_KEY must be exactly 32 bytes, got %d", len(c.Connections.EncKey))
 	}
 	return nil
 }

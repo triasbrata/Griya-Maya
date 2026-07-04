@@ -63,3 +63,28 @@ type ObjectStore interface {
 type ArchiveConverter interface {
 	Convert(ctx context.Context, format domain.ArchiveFormat, archive []byte) ([]convert.Result, error)
 }
+
+// ConnectionRepository persists external-source OAuth connections (implemented
+// by d1.ConnectionRepo). Secret/token fields are stored as opaque ciphertext.
+type ConnectionRepository interface {
+	Create(ctx context.Context, c domain.Connection) error
+	List(ctx context.Context) ([]domain.Connection, error)
+	Get(ctx context.Context, id string) (domain.Connection, error)
+	Update(ctx context.Context, c domain.Connection) error
+	Delete(ctx context.Context, id string) error
+	SaveTokens(ctx context.Context, id, access, refresh, tokenType string, expiresAt int64, status domain.ConnectionStatus, updatedAt int64) error
+}
+
+// OAuthClient performs the outbound OAuth2 token exchange/refresh against an
+// external provider (implemented by oauth.Client).
+type OAuthClient interface {
+	Exchange(ctx context.Context, p domain.Provider, clientID, clientSecret, code, codeVerifier, redirectURI string) (domain.TokenResponse, error)
+	Refresh(ctx context.Context, p domain.Provider, clientID, clientSecret, refreshToken string) (domain.TokenResponse, error)
+}
+
+// StateStore persists the short-lived PKCE/state bundle between the authorize
+// redirect and the callback (implemented by kv.StateStore). Get is single-use.
+type StateStore interface {
+	Put(ctx context.Context, state string, v domain.AuthState, ttlSeconds int) error
+	Get(ctx context.Context, state string) (domain.AuthState, error)
+}

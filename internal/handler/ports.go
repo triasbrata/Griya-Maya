@@ -57,3 +57,16 @@ type VideoService interface {
 type NovelService interface {
 	Register(ctx context.Context, req domain.NovelRegisterRequest) (domain.Page, error)
 }
+
+// ConnectionService is the external-source OAuth connection port the
+// ConnectionHandler depends on (implemented by *service.ConnectionService).
+type ConnectionService interface {
+	Create(ctx context.Context, req domain.ConnectionWriteRequest) (domain.Connection, error)
+	List(ctx context.Context) ([]domain.Connection, error)
+	Get(ctx context.Context, id string) (domain.Connection, error)
+	Update(ctx context.Context, id string, req domain.ConnectionWriteRequest) (domain.Connection, error)
+	Delete(ctx context.Context, id string) error
+	Authorize(ctx context.Context, id, redirectURI string) (string, error)
+	Callback(ctx context.Context, code, state string) (domain.Connection, error)
+	Refresh(ctx context.Context, id string) (domain.Connection, error)
+}

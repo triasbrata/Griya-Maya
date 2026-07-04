@@ -11,6 +11,7 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/oidc"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/d1"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/kv"
+	"github.com/triasbrata/mihon-manga-server/internal/repository/oauth"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/r2"
 	"github.com/triasbrata/mihon-manga-server/internal/server"
 	"github.com/triasbrata/mihon-manga-server/internal/service"
@@ -52,8 +53,11 @@ var Module = fx.Options(
 	fx.Provide(
 		fx.Annotate(d1.NewMediaRepo, fx.As(new(service.MediaRepository))),
 		fx.Annotate(d1.NewJobRepo, fx.As(new(service.JobRepository))),
+		fx.Annotate(d1.NewConnectionRepo, fx.As(new(service.ConnectionRepository))),
 		fx.Annotate(r2.New, fx.As(new(service.ObjectStore))),
 		fx.Annotate(convert.NewConverter, fx.As(new(service.ArchiveConverter))),
+		fx.Annotate(oauth.NewClient, fx.As(new(service.OAuthClient))),
+		fx.Annotate(kv.NewStateStore, fx.As(new(service.StateStore))),
 	),
 
 	// Services bound to the handler-layer ports.
@@ -63,6 +67,7 @@ var Module = fx.Options(
 		fx.Annotate(newConvertService, fx.As(new(handler.ConvertService))),
 		fx.Annotate(newVideoService, fx.As(new(handler.VideoService))),
 		fx.Annotate(service.NewNovelService, fx.As(new(handler.NovelService))),
+		fx.Annotate(newConnectionService, fx.As(new(handler.ConnectionService))),
 	),
 
 	// Handlers.
@@ -73,6 +78,7 @@ var Module = fx.Options(
 		handler.NewConvertHandler,
 		handler.NewVideoHandler,
 		handler.NewNovelHandler,
+		handler.NewConnectionHandler,
 	),
 
 	// HTTP server + lifecycle.
@@ -88,6 +94,16 @@ func newMediaService(repo service.MediaRepository, store service.ObjectStore, c 
 // newVideoService injects the public base URL from config.
 func newVideoService(jobs service.JobRepository, store service.ObjectStore, c config.Config) *service.VideoService {
 	return service.NewVideoService(jobs, store, c.HTTP.PublicBaseURL)
+}
+
+// newConnectionService injects the 32-byte connections encryption key from config.
+func newConnectionService(
+	repo service.ConnectionRepository,
+	oauthClient service.OAuthClient,
+	state service.StateStore,
+	c config.Config,
+) *service.ConnectionService {
+	return service.NewConnectionService(repo, oauthClient, state, []byte(c.Connections.EncKey))
 }
 
 // newConvertService injects the convert timeout from config.

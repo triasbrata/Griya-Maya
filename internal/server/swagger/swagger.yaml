@@ -46,6 +46,44 @@ components:
         url:
           type: string
       type: object
+    domain.Connection:
+      properties:
+        client_id:
+          type: string
+        created_at:
+          type: integer
+        expires_at:
+          type: integer
+        id:
+          type: string
+        label:
+          type: string
+        provider:
+          type: string
+          x-enum-varnames:
+          - ProviderMyAnimeList
+        status:
+          $ref: '#/components/schemas/domain.ConnectionStatus'
+        updated_at:
+          type: integer
+      type: object
+    domain.ConnectionStatus:
+      type: string
+      x-enum-varnames:
+      - ConnectionDisconnected
+      - ConnectionConnected
+      - ConnectionError
+    domain.ConnectionWriteRequest:
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        label:
+          type: string
+        provider:
+          $ref: '#/components/schemas/domain.Provider'
+      type: object
     domain.ConvertJob:
       properties:
         chapterId:
@@ -251,6 +289,10 @@ components:
         width:
           type: integer
       type: object
+    domain.Provider:
+      type: string
+      x-enum-varnames:
+      - ProviderMyAnimeList
     domain.Taxonomy:
       properties:
         id:
@@ -303,6 +345,23 @@ components:
         playlistKey:
           type: string
         prefix:
+          type: string
+      type: object
+    handler.authorizeRequest:
+      properties:
+        redirect_uri:
+          type: string
+      type: object
+    handler.authorizeResponse:
+      properties:
+        authorize_url:
+          type: string
+      type: object
+    handler.callbackRequest:
+      properties:
+        code:
+          type: string
+        state:
           type: string
       type: object
     oidc.clientMetadata:
@@ -650,6 +709,242 @@ paths:
       summary: Page list (presigned URLs) for a chapter
       tags:
       - reader
+  /v1/connections:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.Connection'
+                type: array
+          description: OK
+      security:
+      - BearerAuth: []
+      summary: List external-source connections.
+      tags:
+      - connection
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.ConnectionWriteRequest'
+        description: Connection
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Connection'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Create an external-source connection.
+      tags:
+      - connection
+  /v1/connections/{id}:
+    delete:
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Delete a connection.
+      tags:
+      - connection
+    get:
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Connection'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Get a connection by id.
+      tags:
+      - connection
+    put:
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.ConnectionWriteRequest'
+        description: Connection
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Connection'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Update a connection's label/credentials.
+      tags:
+      - connection
+  /v1/connections/{id}/authorize:
+    post:
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.authorizeRequest'
+        description: Redirect URI
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.authorizeResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Begin the OAuth authorization for a connection.
+      tags:
+      - connection
+  /v1/connections/{id}/refresh:
+    post:
+      parameters:
+      - description: Connection ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Connection'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Refresh a connection's OAuth tokens.
+      tags:
+      - connection
+  /v1/connections/callback:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.callbackRequest'
+        description: Authorization code + state
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Connection'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Complete the OAuth authorization (code + state exchange).
+      tags:
+      - connection
   /v1/convert:
     post:
       requestBody:
