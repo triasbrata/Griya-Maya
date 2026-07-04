@@ -265,3 +265,27 @@ for the required entry format.
   updated to unwrap the envelope centrally, which requires /v1/users to conform.
 - Files: internal/oidc/user_admin.go
 - Tests: go build ./... + go vet ./internal/oidc/... clean; go test ./... → 210 pass.
+
+## 2026-07-05 — Fix MAL token exchange: send client creds in body (drop Basic auth)
+- What:
+  - internal/repository/oauth/client.go: the token requests (Exchange + Refresh)
+    now send `client_id` + `client_secret` as form-body params and no longer set
+    an Authorization: Basic header. MyAnimeList's /v1/oauth2/token is unreliable
+    with Basic auth and expects credentials in the body; sending both can trip
+    "invalid_request". Single, clean body scheme.
+  - Non-2xx responses already surface the MAL status + response body in the
+    returned error, so a failed exchange shows the real MAL reason in the admin's
+    callback Response `message`.
+- Why: OAuth authorize succeeded but /v1/connections/callback left the connection
+  status="disconnected" — the token exchange was failing at MAL (Cause #1 of the
+  callback audit). Basic-auth-only requests are rejected by MAL.
+- Files: internal/repository/oauth/client.go; internal/repository/oauth/client_test.go (new).
+- Tests: added white-box oauth client tests (custom RoundTripper) asserting the
+  body carries client_id/client_secret + grant/code/verifier/redirect_uri, that no
+  Basic header is sent, that the MAL token URL is hit, and that a non-2xx surfaces
+  status+body in the error. `go build/vet` clean; `go test ./...` → 214 pass.
+  Coverage: domain 90.0%, service 88.7%, handler 88.2%, d1 82.7%, oauth 88.5%
+  (all ≥80%).
+- Notes: NOT deployed; no wrangler run. Cause #2 (admin token missing the new
+  connections.write scope → 401/403 at the gate) is a re-login on the admin side,
+  left to the team lead pending the user's callback Response capture.

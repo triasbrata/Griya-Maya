@@ -56,13 +56,20 @@ func (c *Client) Refresh(ctx context.Context, p domain.Provider, clientID, clien
 	return c.post(ctx, p, clientID, clientSecret, form)
 }
 
-// post form-encodes the request to the provider's token URL, authenticating with
-// HTTP Basic (client_id:client_secret), and decodes the token payload.
+// post form-encodes the request to the provider's token URL and decodes the
+// token payload. Client credentials go in the request BODY (client_id +
+// client_secret), not an Authorization: Basic header: MyAnimeList's
+// /v1/oauth2/token is unreliable with Basic auth and expects the credentials as
+// form params, so we use the body scheme exclusively (sending both can trip
+// "invalid_request" on some MAL responses).
 func (c *Client) post(ctx context.Context, p domain.Provider, clientID, clientSecret string, form url.Values) (domain.TokenResponse, error) {
 	endpoints, ok := p.Endpoints()
 	if !ok {
 		return domain.TokenResponse{}, fmt.Errorf("%w: unknown provider %q", domain.ErrInvalidInput, p)
 	}
+
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoints.TokenURL,
 		strings.NewReader(form.Encode()))
@@ -71,7 +78,6 @@ func (c *Client) post(ctx context.Context, p domain.Provider, clientID, clientSe
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	req.SetBasicAuth(clientID, clientSecret)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
