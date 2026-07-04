@@ -375,3 +375,13 @@ for the required entry format.
   Coverage: service 88.2%, handler 87.1%, d1 83.7% (all > 80% gate).
 - Ops: apply migration (wrangler d1 execute manga --file=migrations/0006_sources.sql);
   add admin.read/admin.write to admin-web's D1 scopes + re-login.
+
+## 2026-07-05 — Migration 0007: reconcile admin-web scopes
+- What: migrations/0007_admin_web_scopes.sql UPDATEs the seeded admin-web client's
+  scopes to the full set (adds connections.write, users.read/write,
+  admin.read/write, taksonomi.*.write). seedPublicClient only INSERTs when the
+  client is absent, so existing rows never gained the newer scopes; this brings
+  them in line with the seed. Idempotent (absolute SET).
+- Why: without it, admin-web tokens lack the new scopes and gated routes 403.
+- Files: migrations/0007_admin_web_scopes.sql
+- Tests: n/a (SQL migration); keep in sync with internal/oidc/seed.go.
