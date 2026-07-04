@@ -52,6 +52,17 @@ type JobRepository interface {
 	ReplacePages(ctx context.Context, chapterID string, pages []domain.StoredPage) error
 }
 
+// SourceRepository persists content sources (implemented by d1.SourceRepo).
+type SourceRepository interface {
+	List(ctx context.Context, enabledOnly bool) ([]domain.Source, error)
+	Get(ctx context.Context, id string) (domain.Source, error)
+	Exists(ctx context.Context, id string) (bool, error)
+	MediaCount(ctx context.Context, id string) (int, error)
+	Create(ctx context.Context, s domain.Source) error
+	Update(ctx context.Context, s domain.Source) error
+	Delete(ctx context.Context, id string) error
+}
+
 // ObjectStore is the blob port (implemented by r2.Store).
 type ObjectStore interface {
 	Get(ctx context.Context, key string) ([]byte, string, error)

@@ -339,6 +339,36 @@ components:
       type: string
       x-enum-varnames:
       - ProviderMyAnimeList
+    domain.Source:
+      properties:
+        createdAt:
+          type: string
+        enabled:
+          type: boolean
+        iconUrl:
+          type: string
+        id:
+          type: string
+        lang:
+          type: string
+        name:
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    domain.SourceWriteRequest:
+      properties:
+        enabled:
+          type: boolean
+        iconUrl:
+          type: string
+        id:
+          type: string
+        lang:
+          type: string
+        name:
+          type: string
+      type: object
     domain.Taxonomy:
       properties:
         id:
@@ -709,6 +739,148 @@ paths:
       summary: Liveness probe
       tags:
       - system
+  /v1/admin/sources:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.Source'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List all sources (admin)
+      tags:
+      - sources
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.SourceWriteRequest'
+        description: New source
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Source'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Create a source (admin)
+      tags:
+      - sources
+  /v1/admin/sources/{id}:
+    delete:
+      parameters:
+      - description: Source ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Delete a source (admin)
+      tags:
+      - sources
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Source'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Get a source (admin)
+      tags:
+      - sources
+    put:
+      parameters:
+      - description: Source ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.SourceWriteRequest'
+        description: Updated fields
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.Source'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Update a source (admin)
+      tags:
+      - sources
   /v1/chapters/{id}:
     delete:
       parameters:
@@ -1410,6 +1582,35 @@ paths:
         page.
       tags:
       - novel
+  /v1/sources:
+    get:
+      description: Sources the reader can browse. Gated by manga.read.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.Source'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List enabled sources
+      tags:
+      - catalog
   /v1/sources/{sourceId}/categories:
     get:
       parameters:

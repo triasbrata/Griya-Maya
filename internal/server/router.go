@@ -36,6 +36,7 @@ type RouterParams struct {
 	UserAdmin  *oidc.UserAdminHandler
 	Health     *handler.HealthHandler
 	Media      *handler.MediaHandler
+	Source     *handler.SourceHandler
 	Taxonomy   *handler.TaxonomyHandler
 	Convert    *handler.ConvertHandler
 	Video      *handler.VideoHandler
@@ -124,6 +125,23 @@ func New(p RouterParams) *server.Hertz {
 		// Taxonomy reads share the reader scope: listing genres/categories/
 		// authors/artists needs only manga.read.
 		read.GET("/taxonomies/:kind", p.Taxonomy.List)
+
+		// Enabled source directory for the reader (end client).
+		read.GET("/sources", p.Source.List)
+	}
+
+	// Admin surface (gated separately from catalog scopes): source management.
+	// Reads (incl. disabled sources) need admin.read; mutations need admin.write.
+	adminRead := h.Group("/v1/admin", p.OIDC.MiddlewareScope(oidc.ScopeAdminRead))
+	{
+		adminRead.GET("/sources", p.Source.AdminList)
+		adminRead.GET("/sources/:id", p.Source.Get)
+	}
+	adminWrite := h.Group("/v1/admin", p.OIDC.MiddlewareScope(oidc.ScopeAdminWrite))
+	{
+		adminWrite.POST("/sources", p.Source.Create)
+		adminWrite.PUT("/sources/:id", p.Source.Update)
+		adminWrite.DELETE("/sources/:id", p.Source.Delete)
 	}
 
 	// Catalog management (gated by manga.write): create/update/delete media and

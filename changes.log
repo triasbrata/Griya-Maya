@@ -347,3 +347,31 @@ for the required entry format.
   `go vet`, gofmt clean; `go test ./...` → 236 pass. Coverage: domain 93.9%,
   service 88.9%, handler 88.6%, repository/d1 83.7% (all ≥80%).
 - Notes: NOT deployed. No migration, no new env/secret. Deploy = `make deploy`.
+
+## 2026-07-05 — Normalize source into its own entity + reader listing + admin CRUD
+- What:
+  - Migration 0006_sources.sql: new `source` table (id, name, lang, icon_url,
+    enabled, timestamps); backfills a row per distinct media.source_id and seeds
+    the canonical `griyamedia`. media.source_id stays the logical FK.
+  - domain.Source + SourceWriteRequest.
+  - d1.SourceRepo (List/Get/Exists/MediaCount/Create/Update/Delete);
+    service.SourceService (validation, id-uniqueness, refuses deleting a source
+    that still has media); handler.SourceHandler.
+  - Reader endpoint GET /v1/sources (gated manga.read, enabled sources only) for
+    the end client. Admin management under /v1/admin/sources gated by two new
+    scopes: admin.read (GET incl. disabled) and admin.write (POST/PUT/DELETE).
+  - New scopes admin.read/admin.write: consts (util.go), SupportedScopes
+    (provider.go), IsScopeAllowed (client.go), seeded on admin-web (seed.go).
+  - FX wiring (module.go), router groups, mockery interfaces + regenerated mocks,
+    swagger regenerated (make docs).
+- Why: promote the content source from a bare media.source_id string to a managed
+  first-class entity — listable by the reader, CRUD-able by admins.
+- Files: migrations/0006_sources.sql, internal/domain/source.go,
+  internal/repository/d1/source_repo{,_test}.go, internal/service/source_service
+  {,_test}.go + ports.go, internal/handler/source_handler{,_test}.go + ports.go,
+  internal/oidc/{util,provider,client,seed}.go, internal/app/module.go,
+  internal/server/router.go, .mockery.yaml, internal/server/swagger/*.
+- Tests: go build ./... + go vet ./internal/... clean; go test ./... → 259 pass.
+  Coverage: service 88.2%, handler 87.1%, d1 83.7% (all > 80% gate).
+- Ops: apply migration (wrangler d1 execute manga --file=migrations/0006_sources.sql);
+  add admin.read/admin.write to admin-web's D1 scopes + re-login.

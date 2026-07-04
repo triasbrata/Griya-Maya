@@ -55,6 +55,7 @@ var Module = fx.Options(
 		fx.Annotate(d1.NewMediaRepo, fx.As(new(service.MediaRepository))),
 		fx.Annotate(d1.NewJobRepo, fx.As(new(service.JobRepository))),
 		fx.Annotate(d1.NewConnectionRepo, fx.As(new(service.ConnectionRepository))),
+		fx.Annotate(d1.NewSourceRepo, fx.As(new(service.SourceRepository))),
 		fx.Annotate(r2.New, fx.As(new(service.ObjectStore))),
 		fx.Annotate(convert.NewConverter, fx.As(new(service.ArchiveConverter))),
 		fx.Annotate(oauth.NewClient, fx.As(new(service.OAuthClient))),
@@ -64,6 +65,7 @@ var Module = fx.Options(
 	// Services bound to the handler-layer ports.
 	fx.Provide(
 		fx.Annotate(newMediaService, fx.As(new(handler.MediaService))),
+		fx.Annotate(service.NewSourceService, fx.As(new(handler.SourceService))),
 		fx.Annotate(service.NewTaxonomyService, fx.As(new(handler.TaxonomyService))),
 		fx.Annotate(newConvertService, fx.As(new(handler.ConvertService))),
 		fx.Annotate(newVideoService, fx.As(new(handler.VideoService))),
@@ -75,6 +77,7 @@ var Module = fx.Options(
 	fx.Provide(
 		handler.NewHealthHandler,
 		handler.NewMediaHandler,
+		handler.NewSourceHandler,
 		handler.NewTaxonomyHandler,
 		handler.NewConvertHandler,
 		handler.NewVideoHandler,

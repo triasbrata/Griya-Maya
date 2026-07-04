@@ -26,6 +26,12 @@ const (
 	ScopeUsersRead = "users.read"
 	// ScopeUsersWrite gates creating/updating/deleting admin users.
 	ScopeUsersWrite = "users.write"
+	// ScopeAdminRead gates admin-only reads such as the full source directory
+	// (/v1/admin/... GET).
+	ScopeAdminRead = "admin.read"
+	// ScopeAdminWrite gates admin-only mutations such as source management
+	// (/v1/admin/... POST/PUT/DELETE).
+	ScopeAdminWrite = "admin.write"
 )
 
 // TaxonomyWriteKinds are the URL :kind path segments (plural) that each carry

@@ -58,7 +58,7 @@ func (c *Client) RestrictAdditionalAccessTokenScopes() func(scopes []string) []s
 func (c *Client) IsScopeAllowed(scope string) bool {
 	switch scope {
 	case ScopeMangaWrite, ScopeMangaRead, ScopeConnectionsWrite,
-		ScopeUsersRead, ScopeUsersWrite:
+		ScopeUsersRead, ScopeUsersWrite, ScopeAdminRead, ScopeAdminWrite:
 		return true
 	}
 	// Per-kind taxonomy write scopes: taksonomi.<kind>.write.

@@ -31,6 +31,7 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 		oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
 		oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
 		ScopeConnectionsWrite, ScopeUsersRead, ScopeUsersWrite,
+		ScopeAdminRead, ScopeAdminWrite,
 	}
 	for _, k := range TaxonomyWriteKinds {
 		supportedScopes = append(supportedScopes, ScopeTaxonomyWrite(k))

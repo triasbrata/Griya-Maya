@@ -19,6 +19,7 @@ packages:
       ConnectionRepository:
       OAuthClient:
       StateStore:
+      SourceRepository:
   github.com/triasbrata/mihon-manga-server/internal/handler:
     interfaces:
       MediaService:
@@ -27,6 +28,7 @@ packages:
       VideoService:
       NovelService:
       ConnectionService:
+      SourceService:
   github.com/triasbrata/mihon-manga-server/internal/repository/d1:
     interfaces:
       Querier:

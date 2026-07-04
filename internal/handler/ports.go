@@ -31,6 +31,16 @@ type MediaService interface {
 	DeleteChapter(ctx context.Context, id string) error
 }
 
+// SourceService is the source listing + management port the SourceHandler
+// depends on (implemented by *service.SourceService).
+type SourceService interface {
+	List(ctx context.Context, enabledOnly bool) ([]domain.Source, error)
+	Get(ctx context.Context, id string) (domain.Source, error)
+	Create(ctx context.Context, req domain.SourceWriteRequest) (domain.Source, error)
+	Update(ctx context.Context, id string, req domain.SourceWriteRequest) (domain.Source, error)
+	Delete(ctx context.Context, id string) error
+}
+
 // TaxonomyService is the taxonomy-management port the TaxonomyHandler depends on
 // (implemented by *service.TaxonomyService).
 type TaxonomyService interface {
