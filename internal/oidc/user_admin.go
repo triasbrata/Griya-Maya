@@ -16,9 +16,8 @@ import (
 // UserAdminHandler manages the admin_user directory (the accounts that can log
 // into the embedded OP). It lives in the oidc package because it shares the user
 // table and the argon2id password hashing with the login flow — like DCRHandler,
-// it is a management surface wired straight into the router. Unlike the OAuth
-// protocol endpoints, it speaks the app's uniform domain.APIResponse envelope so
-// the admin panel consumes it the same way as every other REST route.
+// it is a management surface wired straight into the router. Responses use the
+// uniform domain.APIResponse envelope, matching the rest of the REST layer.
 type UserAdminHandler struct {
 	storage *Storage
 }
@@ -56,9 +55,9 @@ type updateUserRequest struct {
 // @Summary     List admin users
 // @Tags        users
 // @Produce     json
-// @Success     200 {object} domain.APIResponse[[]oidc.userRecord]
-// @Failure     401 {object} domain.APIResponse[any]
-// @Failure     403 {object} domain.APIResponse[any]
+// @Success     200 {array} oidc.userRecord
+// @Failure     401 {object} oidc.userErrorBody
+// @Failure     403 {object} oidc.userErrorBody
 // @Security    BearerAuth
 // @Router      /v1/users [get]
 func (h *UserAdminHandler) List(ctx context.Context, c *app.RequestContext) {
@@ -76,8 +75,8 @@ func (h *UserAdminHandler) List(ctx context.Context, c *app.RequestContext) {
 // @Tags        users
 // @Produce     json
 // @Param       id path string true "User ID"
-// @Success     200 {object} domain.APIResponse[oidc.userRecord]
-// @Failure     404 {object} domain.APIResponse[any]
+// @Success     200 {object} oidc.userRecord
+// @Failure     404 {object} oidc.userErrorBody
 // @Security    BearerAuth
 // @Router      /v1/users/{id} [get]
 func (h *UserAdminHandler) Get(ctx context.Context, c *app.RequestContext) {
@@ -100,9 +99,9 @@ func (h *UserAdminHandler) Get(ctx context.Context, c *app.RequestContext) {
 // @Accept      json
 // @Produce     json
 // @Param       request body oidc.createUserRequest true "New user"
-// @Success     201 {object} domain.APIResponse[oidc.userRecord]
-// @Failure     400 {object} domain.APIResponse[any]
-// @Failure     409 {object} domain.APIResponse[any]
+// @Success     201 {object} oidc.userRecord
+// @Failure     400 {object} oidc.userErrorBody
+// @Failure     409 {object} oidc.userErrorBody
 // @Security    BearerAuth
 // @Router      /v1/users [post]
 func (h *UserAdminHandler) Create(ctx context.Context, c *app.RequestContext) {
@@ -147,10 +146,10 @@ func (h *UserAdminHandler) Create(ctx context.Context, c *app.RequestContext) {
 // @Produce     json
 // @Param       id path string true "User ID"
 // @Param       request body oidc.updateUserRequest true "Updated fields"
-// @Success     200 {object} domain.APIResponse[oidc.userRecord]
-// @Failure     400 {object} domain.APIResponse[any]
-// @Failure     404 {object} domain.APIResponse[any]
-// @Failure     409 {object} domain.APIResponse[any]
+// @Success     200 {object} oidc.userRecord
+// @Failure     400 {object} oidc.userErrorBody
+// @Failure     404 {object} oidc.userErrorBody
+// @Failure     409 {object} oidc.userErrorBody
 // @Security    BearerAuth
 // @Router      /v1/users/{id} [put]
 func (h *UserAdminHandler) Update(ctx context.Context, c *app.RequestContext) {
@@ -208,8 +207,8 @@ func (h *UserAdminHandler) Update(ctx context.Context, c *app.RequestContext) {
 // @Produce     json
 // @Param       id path string true "User ID"
 // @Success     204 "No Content"
-// @Failure     404 {object} domain.APIResponse[any]
-// @Failure     409 {object} domain.APIResponse[any]
+// @Failure     404 {object} oidc.userErrorBody
+// @Failure     409 {object} oidc.userErrorBody
 // @Security    BearerAuth
 // @Router      /v1/users/{id} [delete]
 func (h *UserAdminHandler) Delete(ctx context.Context, c *app.RequestContext) {
@@ -339,7 +338,10 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// respondData writes a success envelope; respondErr writes the flat error shape.
+// respondData / respondErr emit the uniform response envelope
+// (domain.APIResponse) so /v1/users matches every other REST endpoint: success
+// carries the typed resource under `data`, errors carry the flat
+// `message` + `error_code`.
 func respondData[T any](c *app.RequestContext, status int, data T) {
 	c.JSON(status, domain.APIResponse[T]{Success: true, Data: data})
 }

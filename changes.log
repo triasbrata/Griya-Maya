@@ -233,3 +233,35 @@ for the required entry format.
   → 210 pass; internal/handler coverage 88.2% (>80% gate). Verified live: a
   Popular response carries X-Pagination-Kind:offset, -Page:2, -Per-Page:30,
   -Has-Next:true, and omits -Total when unknown.
+
+## 2026-07-05 — Admin user management API + users.read/users.write scopes
+- What:
+  - Two new scopes ScopeUsersRead="users.read" / ScopeUsersWrite="users.write"
+    (util.go), advertised in SupportedScopes (provider.go), allowed in
+    Client.IsScopeAllowed (client.go), seeded on admin-web (seed.go).
+  - New internal/oidc/user_admin.go: UserAdminHandler with List/Get/Create/Update/
+    Delete over the admin_user table (mirrors the DCRHandler precedent — shares the
+    argon2id hashing + user table). Create/Update validate email + 8-char password;
+    Update leaves the password unchanged when blank; Delete refuses the last user.
+    Wired via oidc.NewUserAdminHandler (module.go).
+  - router.go: GET /v1/users[/:id] gated by users.read; POST/PUT/DELETE by users.write.
+- Why: let the admin panel manage the accounts that can sign into the embedded OP.
+- Files: internal/oidc/{util,provider,client,seed,user_admin}.go,
+  internal/app/module.go, internal/server/router.go
+- Tests: go build ./... + go vet clean; gofmt clean; go test ./... → 205 pass.
+  internal/oidc is coverage-exempt infra. Responses are bare (record/array;
+  {error,message} on error) to match the admin client; swagger regen (make docs) is
+  a pending follow-up (annotations reference oidc.userRecord/userErrorBody).
+- Ops: existing admin-web D1 row won't be re-seeded — add "users.read","users.write"
+  to its scopes and re-login. New admin users are created via the API (argon2id).
+
+## 2026-07-05 — /v1/users responses use the uniform envelope
+- What: user_admin.go respondData/respondErr now emit domain.APIResponse (was
+  bare c.JSON + {error,message}), so admin user-management matches every other
+  REST endpoint post response-envelope migration.
+- Why: the response-envelope change wrapped all handlers, but the concurrently
+  developed /v1/users endpoints were written against the old bare shape, leaving
+  them the only inconsistent surface. The admin FE's request() client is being
+  updated to unwrap the envelope centrally, which requires /v1/users to conform.
+- Files: internal/oidc/user_admin.go
+- Tests: go build ./... + go vet ./internal/oidc/... clean; go test ./... → 210 pass.
