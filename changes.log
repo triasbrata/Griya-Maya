@@ -385,3 +385,20 @@ for the required entry format.
 - Why: without it, admin-web tokens lack the new scopes and gated routes 403.
 - Files: migrations/0007_admin_web_scopes.sql
 - Tests: n/a (SQL migration); keep in sync with internal/oidc/seed.go.
+
+## 2026-07-05 — Reader endpoint: adjacent (prev/next) chapter
+- What: GET /v1/chapters/{id}/adjacent (gated manga.read) returns the chapters
+  immediately before and after the given chapter within its media, ordered by
+  chapter number ({previous, next}; either null at the ends).
+  - domain.ChapterNeighbors; d1.MediaRepo.ChapterByID; MediaService.ChapterNeighbors
+    (loads the chapter, then its media's ordered chapters, picks the neighbors).
+  - Wired into the reader route group; MediaRepository/MediaService ports extended;
+    mocks + swagger regenerated.
+- Why: lets the reader navigate to the previous/next chapter without fetching and
+  scanning the whole chapter list client-side.
+- Files: internal/domain/manga.go, internal/repository/d1/media_repo.go,
+  internal/service/media_service.go + ports.go, internal/handler/media_handler.go
+  + ports.go, internal/server/router.go, mocks, swagger; tests in
+  {service,handler,d1} (chapter_neighbors / chapter_by_id).
+- Tests: go build/vet/test ./... → 267 pass. Coverage service 88.4%, handler
+  87.3%, d1 83.7% (all > 80%).

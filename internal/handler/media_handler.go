@@ -206,6 +206,27 @@ func (h *MediaHandler) Pages(ctx context.Context, c *app.RequestContext) {
 	writeOK(c, consts.StatusOK, res)
 }
 
+// ChapterNeighbors godoc
+// @Summary  Previous/next chapter around a chapter
+// @Description Returns the chapters immediately before and after this one within its media (by chapter number); either side is null at the ends. Requires a manga.read access token.
+// @Tags     reader
+// @Produce  json
+// @Param    id path string true "Chapter ID"
+// @Success  200 {object} domain.ChapterNeighbors
+// @Failure  401 {object} handler.ErrorResponse
+// @Failure  403 {object} handler.ErrorResponse
+// @Failure  404 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/chapters/{id}/adjacent [get]
+func (h *MediaHandler) ChapterNeighbors(ctx context.Context, c *app.RequestContext) {
+	res, err := h.svc.ChapterNeighbors(ctx, c.Param("id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writeOK(c, consts.StatusOK, res)
+}
+
 // CreateMedia godoc
 // @Summary  Create a media entry (manga | video | novel).
 // @Tags     media

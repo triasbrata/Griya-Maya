@@ -25,6 +25,7 @@ type MediaRepository interface {
 	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Get(ctx context.Context, id string) (domain.Media, error)
 	Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error)
+	ChapterByID(ctx context.Context, id string) (domain.Chapter, error)
 	Pages(ctx context.Context, chapterID string) ([]domain.StoredPage, error)
 
 	// Media writes.

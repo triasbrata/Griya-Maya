@@ -20,6 +20,7 @@ type MediaService interface {
 	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
 	Details(ctx context.Context, id string) (domain.Media, error)
 	Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error)
+	ChapterNeighbors(ctx context.Context, chapterID string) (domain.ChapterNeighbors, error)
 	Pages(ctx context.Context, chapterID string) ([]domain.Page, error)
 
 	// Media + chapter management.

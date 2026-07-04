@@ -29,6 +29,13 @@ components:
         url:
           type: string
       type: object
+    domain.ChapterNeighbors:
+      properties:
+        next:
+          $ref: '#/components/schemas/domain.Chapter'
+        previous:
+          $ref: '#/components/schemas/domain.Chapter'
+      type: object
     domain.ChapterWriteRequest:
       properties:
         dateUpload:
@@ -937,6 +944,48 @@ paths:
       summary: Update a chapter.
       tags:
       - media
+  /v1/chapters/{id}/adjacent:
+    get:
+      description: Returns the chapters immediately before and after this one within
+        its media (by chapter number); either side is null at the ends. Requires a
+        manga.read access token.
+      parameters:
+      - description: Chapter ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.ChapterNeighbors'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Previous/next chapter around a chapter
+      tags:
+      - reader
   /v1/chapters/{id}/pages:
     get:
       description: Returns short-lived presigned R2 URLs the client fetches directly.

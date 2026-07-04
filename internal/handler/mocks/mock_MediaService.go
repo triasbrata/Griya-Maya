@@ -82,6 +82,63 @@ func (_c *MockMediaService_Categories_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// ChapterNeighbors provides a mock function with given fields: ctx, chapterID
+func (_m *MockMediaService) ChapterNeighbors(ctx context.Context, chapterID string) (domain.ChapterNeighbors, error) {
+	ret := _m.Called(ctx, chapterID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ChapterNeighbors")
+	}
+
+	var r0 domain.ChapterNeighbors
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (domain.ChapterNeighbors, error)); ok {
+		return rf(ctx, chapterID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) domain.ChapterNeighbors); ok {
+		r0 = rf(ctx, chapterID)
+	} else {
+		r0 = ret.Get(0).(domain.ChapterNeighbors)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, chapterID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaService_ChapterNeighbors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ChapterNeighbors'
+type MockMediaService_ChapterNeighbors_Call struct {
+	*mock.Call
+}
+
+// ChapterNeighbors is a helper method to define mock.On call
+//   - ctx context.Context
+//   - chapterID string
+func (_e *MockMediaService_Expecter) ChapterNeighbors(ctx interface{}, chapterID interface{}) *MockMediaService_ChapterNeighbors_Call {
+	return &MockMediaService_ChapterNeighbors_Call{Call: _e.mock.On("ChapterNeighbors", ctx, chapterID)}
+}
+
+func (_c *MockMediaService_ChapterNeighbors_Call) Run(run func(ctx context.Context, chapterID string)) *MockMediaService_ChapterNeighbors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_ChapterNeighbors_Call) Return(_a0 domain.ChapterNeighbors, _a1 error) *MockMediaService_ChapterNeighbors_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaService_ChapterNeighbors_Call) RunAndReturn(run func(context.Context, string) (domain.ChapterNeighbors, error)) *MockMediaService_ChapterNeighbors_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Chapters provides a mock function with given fields: ctx, mediaID
 func (_m *MockMediaService) Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error) {
 	ret := _m.Called(ctx, mediaID)

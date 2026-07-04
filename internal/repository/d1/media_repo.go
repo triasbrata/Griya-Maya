@@ -308,6 +308,20 @@ func (r *MediaRepo) Chapters(ctx context.Context, mediaID string) ([]domain.Chap
 	return out, nil
 }
 
+// ChapterByID returns a single chapter or domain.ErrNotFound.
+func (r *MediaRepo) ChapterByID(ctx context.Context, id string) (domain.Chapter, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, media_id, url, name, number, scanlator, date_upload, format
+		 FROM chapter WHERE id = ?1 LIMIT 1`, id)
+	if err != nil {
+		return domain.Chapter{}, err
+	}
+	if len(rows) == 0 {
+		return domain.Chapter{}, domain.ErrNotFound
+	}
+	return chapterFromRow(rows[0]), nil
+}
+
 // Pages returns stored page rows (R2 keys) for a chapter, ordered by index.
 func (r *MediaRepo) Pages(ctx context.Context, chapterID string) ([]domain.StoredPage, error) {
 	rows, err := r.db.Query(ctx,

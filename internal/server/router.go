@@ -120,6 +120,7 @@ func New(p RouterParams) *server.Hertz {
 	read := h.Group("/v1", p.OIDC.MiddlewareScope(oidc.ScopeMangaRead))
 	{
 		read.GET("/chapters/:id/pages", p.Media.Pages)
+		read.GET("/chapters/:id/adjacent", p.Media.ChapterNeighbors)
 		read.GET("/image", p.Media.Image)
 
 		// Taxonomy reads share the reader scope: listing genres/categories/

@@ -78,6 +78,36 @@ func (s *MediaService) Chapters(ctx context.Context, mediaID string) ([]domain.C
 	return s.repo.Chapters(ctx, mediaID)
 }
 
+// ChapterNeighbors returns the chapters immediately before and after the given
+// chapter within its media, ordered by chapter number. Either side is nil at the
+// ends of the list. The chapter must exist (else domain.ErrNotFound).
+func (s *MediaService) ChapterNeighbors(ctx context.Context, chapterID string) (domain.ChapterNeighbors, error) {
+	current, err := s.repo.ChapterByID(ctx, chapterID)
+	if err != nil {
+		return domain.ChapterNeighbors{}, err
+	}
+	siblings, err := s.repo.Chapters(ctx, current.MediaID)
+	if err != nil {
+		return domain.ChapterNeighbors{}, err
+	}
+	var out domain.ChapterNeighbors
+	for i, ch := range siblings {
+		if ch.ID != current.ID {
+			continue
+		}
+		if i > 0 {
+			prev := siblings[i-1]
+			out.Previous = &prev
+		}
+		if i < len(siblings)-1 {
+			next := siblings[i+1]
+			out.Next = &next
+		}
+		break
+	}
+	return out, nil
+}
+
 // Pages returns a chapter's readable pages with fetchable URLs.
 func (s *MediaService) Pages(ctx context.Context, chapterID string) ([]domain.Page, error) {
 	stored, err := s.repo.Pages(ctx, chapterID)

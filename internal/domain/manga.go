@@ -212,6 +212,13 @@ type MediaWriteRequest struct {
 	Artists     []string    `json:"artists,omitempty"`
 }
 
+// ChapterNeighbors is the previous/next chapter around a given chapter, ordered
+// by chapter number. Either side is null at the ends of the list.
+type ChapterNeighbors struct {
+	Previous *Chapter `json:"previous"`
+	Next     *Chapter `json:"next"`
+}
+
 // ChapterWriteRequest is the create/update payload for a chapter.
 type ChapterWriteRequest struct {
 	MediaID    string    `json:"mediaId"`
