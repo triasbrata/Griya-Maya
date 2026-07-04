@@ -11,6 +11,8 @@ require (
 	github.com/gen2brain/go-fitz v1.28.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	github.com/zitadel/oidc/v3 v3.47.5
 	go.uber.org/fx v1.22.2
@@ -38,6 +40,7 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/gopkg v0.2.0 // indirect
 	github.com/cloudwego/netpoll v0.7.3 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect
@@ -53,8 +56,10 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/muhlemmer/httpforwarded v0.1.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/sv-tools/openapi v0.4.0 // indirect
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect

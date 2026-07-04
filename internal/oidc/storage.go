@@ -93,6 +93,7 @@ func NewStorage(d1c *d1.Client, kvc *kv.Client, cfg config.OIDCConfig) *Storage 
 	s.loadOrCreateSigningKey(ctx)
 	s.seedAdmin(ctx)
 	seedAdminClient(ctx, d1c, cfg)
+	seedIOSClient(ctx, d1c, cfg)
 	return s
 }
 

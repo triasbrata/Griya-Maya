@@ -35,7 +35,7 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 		SupportedUILocales:       []language.Tag{language.English},
 		SupportedScopes: []string{
 			oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
-			oidc.ScopeOfflineAccess, ScopeMangaWrite,
+			oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
 		},
 	}
 

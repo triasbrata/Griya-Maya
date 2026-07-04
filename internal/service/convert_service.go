@@ -46,7 +46,7 @@ func (s *ConvertService) Convert(ctx context.Context, req domain.ConvertRequest)
 		SourceKey:    req.SourceKey,
 		Format:       req.Format,
 		OutputPrefix: req.OutputPrefix,
-		MangaID:      req.MangaID,
+		MediaID:      req.MediaID,
 		ChapterID:    req.ChapterID,
 		Status:       domain.ConvertPending,
 		CreatedAt:    now,

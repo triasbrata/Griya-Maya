@@ -50,23 +50,29 @@ var Module = fx.Options(
 
 	// Repositories bound to service ports.
 	fx.Provide(
-		fx.Annotate(d1.NewMangaRepo, fx.As(new(service.MangaRepository))),
+		fx.Annotate(d1.NewMediaRepo, fx.As(new(service.MediaRepository))),
 		fx.Annotate(d1.NewJobRepo, fx.As(new(service.JobRepository))),
 		fx.Annotate(r2.New, fx.As(new(service.ObjectStore))),
 		fx.Annotate(convert.NewConverter, fx.As(new(service.ArchiveConverter))),
 	),
 
-	// Services.
+	// Services bound to the handler-layer ports.
 	fx.Provide(
-		newMangaService,
-		newConvertService,
+		fx.Annotate(newMediaService, fx.As(new(handler.MediaService))),
+		fx.Annotate(service.NewTaxonomyService, fx.As(new(handler.TaxonomyService))),
+		fx.Annotate(newConvertService, fx.As(new(handler.ConvertService))),
+		fx.Annotate(newVideoService, fx.As(new(handler.VideoService))),
+		fx.Annotate(service.NewNovelService, fx.As(new(handler.NovelService))),
 	),
 
 	// Handlers.
 	fx.Provide(
 		handler.NewHealthHandler,
-		handler.NewMangaHandler,
+		handler.NewMediaHandler,
+		handler.NewTaxonomyHandler,
 		handler.NewConvertHandler,
+		handler.NewVideoHandler,
+		handler.NewNovelHandler,
 	),
 
 	// HTTP server + lifecycle.
@@ -74,9 +80,14 @@ var Module = fx.Options(
 	fx.Invoke(server.Register),
 )
 
-// newMangaService injects the public base URL from config.
-func newMangaService(repo service.MangaRepository, store service.ObjectStore, c config.Config) *service.MangaService {
-	return service.NewMangaService(repo, store, c.HTTP.PublicBaseURL)
+// newMediaService injects the public base URL and presign TTL from config.
+func newMediaService(repo service.MediaRepository, store service.ObjectStore, c config.Config) *service.MediaService {
+	return service.NewMediaService(repo, store, c.HTTP.PublicBaseURL, c.R2.PresignTTL)
+}
+
+// newVideoService injects the public base URL from config.
+func newVideoService(jobs service.JobRepository, store service.ObjectStore, c config.Config) *service.VideoService {
+	return service.NewVideoService(jobs, store, c.HTTP.PublicBaseURL)
 }
 
 // newConvertService injects the convert timeout from config.

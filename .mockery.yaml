@@ -1,0 +1,28 @@
+# mockery v2 config. Regenerate with `make mocks` (or `mockery`).
+# Mocks land in a `mocks` subpackage next to each interface so tests can import
+# them without an import cycle.
+with-expecter: true
+resolve-type-alias: false
+disable-version-string: true
+issue-845-fix: true
+dir: "{{.InterfaceDir}}/mocks"
+outpkg: mocks
+mockname: "Mock{{.InterfaceName}}"
+filename: "mock_{{.InterfaceName}}.go"
+packages:
+  github.com/triasbrata/mihon-manga-server/internal/service:
+    interfaces:
+      MediaRepository:
+      JobRepository:
+      ObjectStore:
+      ArchiveConverter:
+  github.com/triasbrata/mihon-manga-server/internal/handler:
+    interfaces:
+      MediaService:
+      TaxonomyService:
+      ConvertService:
+      VideoService:
+      NovelService:
+  github.com/triasbrata/mihon-manga-server/internal/repository/d1:
+    interfaces:
+      Querier:

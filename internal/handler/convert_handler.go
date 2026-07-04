@@ -15,12 +15,12 @@ import (
 
 // ConvertHandler exposes upload + conversion endpoints.
 type ConvertHandler struct {
-	svc   *service.ConvertService
+	svc   ConvertService
 	store service.ObjectStore
 }
 
 // NewConvertHandler wires a ConvertHandler.
-func NewConvertHandler(svc *service.ConvertService, store service.ObjectStore) *ConvertHandler {
+func NewConvertHandler(svc ConvertService, store service.ObjectStore) *ConvertHandler {
 	return &ConvertHandler{svc: svc, store: store}
 }
 

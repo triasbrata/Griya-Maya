@@ -47,8 +47,12 @@ type R2Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	// PublicBaseURL is the R2 public/custom-domain base used to build page URLs
-	// (e.g. https://cdn.example.com). Empty means serve through this service.
+	// (e.g. https://cdn.example.com). Empty (recommended) keeps the bucket
+	// private and page URLs are minted as short-lived presigned links instead.
 	PublicBaseURL string
+	// PresignTTL bounds how long a presigned page URL stays fetchable. It should
+	// roughly track the access-token TTL (SigV4 hard max is 7d).
+	PresignTTL time.Duration
 }
 
 // KVConfig addresses a Cloudflare Workers KV namespace via the REST API. It
@@ -78,6 +82,10 @@ type OIDCConfig struct {
 	// AdminRedirectURIs are the redirect_uris for the seeded static `admin-web`
 	// PKCE client (comma-separated in ADMIN_REDIRECT_URIS).
 	AdminRedirectURIs []string
+	// IOSRedirectURIs are the redirect_uris for the seeded static `mihon-ios`
+	// public PKCE client (comma-separated in IOS_REDIRECT_URIS). Typically the
+	// app's custom scheme, e.g. mihon://auth/callback.
+	IOSRedirectURIs []string
 }
 
 // ImageConfig tunes AVIF conversion output.
@@ -110,6 +118,7 @@ func Load() (Config, error) {
 			AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
 			SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
 			PublicBaseURL:   os.Getenv("R2_PUBLIC_BASE_URL"),
+			PresignTTL:      time.Duration(envInt("PRESIGN_TTL_SEC", 3600)) * time.Second,
 		},
 		KV: KVConfig{
 			AccountID:   os.Getenv("CF_ACCOUNT_ID"),
@@ -127,6 +136,8 @@ func Load() (Config, error) {
 			AdminPassword:   os.Getenv("OIDC_ADMIN_PASSWORD"),
 			AdminRedirectURIs: splitCSV(env("ADMIN_REDIRECT_URIS",
 				"http://localhost:3000/auth/callback")),
+			IOSRedirectURIs: splitCSV(env("IOS_REDIRECT_URIS",
+				"mihon://auth/callback")),
 		},
 		Image: ImageConfig{
 			Quality:        envInt("AVIF_QUALITY", 55),

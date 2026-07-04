@@ -63,9 +63,13 @@ wrangler.jsonc         Cloudflare Containers config
 | GET    | `/v1/manga/{id}/chapters`              | –      | Chapter list                     |
 | GET    | `/v1/chapters/{id}/pages`              | –      | Page list (AVIF URLs)            |
 | GET    | `/v1/image?key=`                       | –      | Proxy an AVIF object from R2      |
+| GET    | `/v1/stream/{key}`                     | –      | Proxy an HLS playlist/segment from R2 (Range) |
 | POST   | `/v1/convert/upload`                   | Bearer | Upload CBZ/EPUB/PDF to R2         |
 | POST   | `/v1/convert`                          | Bearer | Convert an R2 archive → AVIF      |
 | GET    | `/v1/convert/jobs/{id}`                | Bearer | Job status                       |
+| POST   | `/v1/video/upload`                     | Bearer | Upload an HLS bundle (m3u8 + segments) to R2 |
+| POST   | `/v1/video`                            | Bearer | Register an HLS playlist as a chapter's video page |
+| POST   | `/v1/novel`                            | Bearer | Register a text chapter (.txt in R2) as a chapter's novel page |
 | POST   | `/connect/register`                    | –      | Register OAuth2 client (7591)    |
 | GET/PUT/DELETE | `/connect/register/{id}`       | RegTok | Manage client (7592)             |
 
@@ -101,7 +105,9 @@ app-side `mihonServer` engine maps on decode:
 | _(none)_                 | `Manga.coverHexes`                  | Placeholder palette derived client-side.         |
 | `Chapter.name`           | `Chapter.title`                     | Rename.                                           |
 | `Chapter.dateUpload`     | `Chapter.releaseDate`               | RFC3339 → `Date`.                                 |
-| `Page.imageUrl`          | `ReaderPage.remoteURL`              | Plus `assetKind = .image`.                        |
+| `Page.imageUrl`          | `ReaderPage.remoteURL`              | Plus `assetKind = .image` (or `.video`, see `Page.type`). |
+| `Page.type` = `video`    | `ReaderPage.assetKind = .video`     | HLS `.m3u8` page → AVKit video reader.            |
+| `Page.type` = `novel`    | `ReaderPage.assetKind = .text`      | Inline `Page.body` → novel (text) reader.         |
 | `GenreTag.slug`          | `GenreTag.slug` (`id` = slug)       | 1:1.                                              |
 | `MangaPage.hasNext`      | `SourceFeedResult.reachedEnd`       | `reachedEnd = !hasNext` (or empty page).         |
 
@@ -120,6 +126,43 @@ app-side `mihonServer` engine maps on decode:
 
 > **PDF note:** the default build supports CBZ/EPUB only. PDF rendering needs
 > native MuPDF, so build with `-tags mupdf` (the Dockerfile does this by default).
+
+## Video (HLS) pipeline
+
+Video chapters stream over HLS. The server stores an already-segmented bundle in
+R2 and serves it — segmenting/transcoding happens **outside** the server (e.g.
+`ffmpeg -i in.mp4 -f hls -hls_time 6 -hls_playlist_type vod -hls_segment_filename seg-%03d.ts index.m3u8`).
+
+1. `POST /v1/video/upload` (multipart, repeated `files` parts) uploads the
+   playlist + segments to R2 under a `prefix` (default `hls/<uuid>/`). Content
+   types are set per extension. Response returns the written `keys` and the
+   detected `playlistKey` (the `.m3u8`).
+2. `POST /v1/video` with `{ "chapterId": "...", "playlistKey": "hls/<uuid>/index.m3u8" }`
+   rewrites that chapter's pages to a single **video** page (`page.kind = video`).
+3. `GET /v1/chapters/{id}/pages` then returns one page with `type: "video"` and an
+   `imageUrl` pointing at the playlist.
+
+**Delivery** prefers a public/custom R2 domain (`R2_PUBLIC_BASE_URL`); otherwise
+the playlist and segments are proxied through `GET /v1/stream/{key}`. The proxy
+is **path-based** (not `?key=`) so relative segment URIs inside the playlist
+resolve against the same directory, and it honors HTTP `Range` for seeking.
+Store playlists with **relative** segment names (`seg-000.ts`) so both delivery
+modes work unchanged.
+
+## Novel (text) chapters
+
+Text chapters are stored as a `.txt` object in R2 and served **inline**.
+
+1. `POST /v1/novel` with `{ "chapterId": "...", "text": "<chapter text>" }` writes
+   the text to `novels/<uuid>/chapter.txt` and rewrites the chapter's pages to a
+   single **novel** page (`page.kind = novel`). Pass `textKey` instead of `text`
+   to reference an already-uploaded `.txt`.
+2. `GET /v1/chapters/{id}/pages` reads that `.txt` back from R2 and returns one
+   page with `type: "novel"` and the text in `body` (no `imageUrl`).
+
+The Mihon iOS client maps a `novel` page to `ReaderPage.assetKind = .text` with
+`body` = the text, which its novel reader paginates by paragraph — no remote
+fetch needed on the client.
 
 ## Local development
 

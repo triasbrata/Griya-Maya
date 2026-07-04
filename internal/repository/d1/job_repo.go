@@ -9,7 +9,7 @@ import (
 
 // JobRepo persists conversion jobs and their produced pages.
 type JobRepo struct {
-	db *Client
+	db Querier
 }
 
 // NewJobRepo wires a JobRepo over a D1 client.
@@ -21,11 +21,11 @@ func NewJobRepo(db *Client) *JobRepo {
 func (r *JobRepo) Create(ctx context.Context, job domain.ConvertJob) error {
 	return r.db.Exec(ctx,
 		`INSERT INTO convert_job
-		   (id, source_key, format, output_prefix, manga_id, chapter_id,
+		   (id, source_key, format, output_prefix, media_id, chapter_id,
 		    status, page_count, error, created_at, updated_at)
 		 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
 		job.ID, job.SourceKey, string(job.Format), job.OutputPrefix,
-		job.MangaID, job.ChapterID, string(job.Status), job.PageCount,
+		job.MediaID, job.ChapterID, string(job.Status), job.PageCount,
 		job.Error, job.CreatedAt.Unix(), job.UpdatedAt.Unix(),
 	)
 }
@@ -41,7 +41,7 @@ func (r *JobRepo) UpdateStatus(ctx context.Context, id string, status domain.Con
 // Get returns a job or domain.ErrNotFound.
 func (r *JobRepo) Get(ctx context.Context, id string) (domain.ConvertJob, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, source_key, format, output_prefix, manga_id, chapter_id,
+		`SELECT id, source_key, format, output_prefix, media_id, chapter_id,
 		        status, page_count, error, created_at, updated_at
 		 FROM convert_job WHERE id=?1 LIMIT 1`, id)
 	if err != nil {
@@ -56,7 +56,7 @@ func (r *JobRepo) Get(ctx context.Context, id string) (domain.ConvertJob, error)
 		SourceKey:    strVal(row["source_key"]),
 		Format:       domain.ArchiveFormat(strVal(row["format"])),
 		OutputPrefix: strVal(row["output_prefix"]),
-		MangaID:      strVal(row["manga_id"]),
+		MediaID:      strVal(row["media_id"]),
 		ChapterID:    strVal(row["chapter_id"]),
 		Status:       domain.ConvertStatus(strVal(row["status"])),
 		PageCount:    intVal(row["page_count"]),
@@ -72,10 +72,14 @@ func (r *JobRepo) ReplacePages(ctx context.Context, chapterID string, pages []do
 		return err
 	}
 	for _, p := range pages {
+		kind := p.Kind
+		if kind == "" {
+			kind = domain.PageKindImage
+		}
 		if err := r.db.Exec(ctx,
-			`INSERT INTO page (chapter_id, idx, r2_key, width, height)
-			 VALUES (?1,?2,?3,?4,?5)`,
-			chapterID, p.Index, p.R2Key, p.Width, p.Height,
+			`INSERT INTO page (chapter_id, idx, r2_key, width, height, kind)
+			 VALUES (?1,?2,?3,?4,?5,?6)`,
+			chapterID, p.Index, p.R2Key, p.Width, p.Height, kind,
 		); err != nil {
 			return err
 		}

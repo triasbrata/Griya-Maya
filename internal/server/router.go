@@ -32,8 +32,11 @@ type RouterParams struct {
 	OIDC     *oidc.Provider
 	DCR      *oidc.DCRHandler
 	Health   *handler.HealthHandler
-	Manga    *handler.MangaHandler
+	Media    *handler.MediaHandler
+	Taxonomy *handler.TaxonomyHandler
 	Convert  *handler.ConvertHandler
+	Video    *handler.VideoHandler
+	Novel    *handler.NovelHandler
 }
 
 // New builds the Hertz server and registers all routes.
@@ -56,7 +59,10 @@ func New(p RouterParams) *server.Hertz {
 	for _, path := range []string{
 		"/.well-known/*action",
 		"/authorize",
-		"/callback",
+		// zitadel/oidc registers the post-login/consent callback at
+		// "<authorize endpoint>/callback" (see op.authCallbackPath) — i.e.
+		// /authorize/callback. It must be bridged or the flow 404s after consent.
+		"/authorize/callback",
 		"/oauth/*action",
 		"/userinfo",
 		"/keys",
@@ -69,17 +75,50 @@ func New(p RouterParams) *server.Hertz {
 		h.Any(path, opHandler)
 	}
 
-	// Catalog + reader (public reads).
+	// Catalog (public reads — these responses carry no R2 page bytes). Media is
+	// the unified entity (manga | video | novel), discriminated by `type`.
 	v1 := h.Group("/v1")
 	{
-		v1.GET("/sources/:sourceId/popular", p.Manga.Popular)
-		v1.GET("/sources/:sourceId/latest", p.Manga.Latest)
-		v1.GET("/sources/:sourceId/search", p.Manga.Search)
-		v1.GET("/sources/:sourceId/genres", p.Manga.Genres)
-		v1.GET("/manga/:id", p.Manga.Details)
-		v1.GET("/manga/:id/chapters", p.Manga.Chapters)
-		v1.GET("/chapters/:id/pages", p.Manga.Pages)
-		v1.GET("/image", p.Manga.Image)
+		v1.GET("/sources/:sourceId/popular", p.Media.Popular)
+		v1.GET("/sources/:sourceId/latest", p.Media.Latest)
+		v1.GET("/sources/:sourceId/search", p.Media.Search)
+		v1.GET("/sources/:sourceId/genres", p.Media.Genres)
+		v1.GET("/sources/:sourceId/categories", p.Media.Categories)
+		v1.GET("/media/:id", p.Media.Details)
+		v1.GET("/media/:id/chapters", p.Media.Chapters)
+		// HLS streaming proxy (public read): path-based so a playlist's relative
+		// segment URIs resolve. Used when no public R2 domain is configured.
+		v1.GET("/stream/*key", p.Video.Stream)
+	}
+
+	// Reader (gated by manga.read): the page list hands out short-lived
+	// presigned R2 URLs, so a valid read token is required to mint fetchable
+	// page bytes. The legacy /v1/image proxy is retired behind the same gate so
+	// the bucket stays fully private (prefer presigned URLs; keep R2 public base
+	// empty).
+	read := h.Group("/v1", p.OIDC.MiddlewareScope(oidc.ScopeMangaRead))
+	{
+		read.GET("/chapters/:id/pages", p.Media.Pages)
+		read.GET("/image", p.Media.Image)
+	}
+
+	// Catalog management (gated by manga.write): create/update/delete media,
+	// chapters, and the normalized taxonomies (genres/categories/authors/artists).
+	manage := h.Group("/v1", p.OIDC.Middleware())
+	{
+		manage.POST("/media", p.Media.CreateMedia)
+		manage.PUT("/media/:id", p.Media.UpdateMedia)
+		manage.DELETE("/media/:id", p.Media.DeleteMedia)
+		manage.POST("/media/:id/chapters", p.Media.CreateChapter)
+		manage.PUT("/chapters/:id", p.Media.UpdateChapter)
+		manage.DELETE("/chapters/:id", p.Media.DeleteChapter)
+
+		// Taxonomy management: /v1/taxonomies/{kind} where kind is one of
+		// genres | categories | authors | artists.
+		manage.GET("/taxonomies/:kind", p.Taxonomy.List)
+		manage.POST("/taxonomies/:kind", p.Taxonomy.Create)
+		manage.PUT("/taxonomies/:kind/:id", p.Taxonomy.Update)
+		manage.DELETE("/taxonomies/:kind/:id", p.Taxonomy.Delete)
 	}
 
 	// Conversion (protected by the OIDC access-token middleware).
@@ -88,6 +127,21 @@ func New(p RouterParams) *server.Hertz {
 		secured.POST("/upload", p.Convert.Upload)
 		secured.POST("", p.Convert.Convert)
 		secured.GET("/jobs/:id", p.Convert.JobStatus)
+	}
+
+	// HLS video ingest (protected): upload a bundle, then register it as a
+	// chapter's video page.
+	video := h.Group("/v1/video", p.OIDC.Middleware())
+	{
+		video.POST("/upload", p.Video.Upload)
+		video.POST("", p.Video.Register)
+	}
+
+	// Novel text ingest (protected): register a chapter's text (inline or by an
+	// already-uploaded R2 key). Served inline via /v1/chapters/{id}/pages.
+	novel := h.Group("/v1/novel", p.OIDC.Middleware())
+	{
+		novel.POST("", p.Novel.Register)
 	}
 
 	// OAuth2 Dynamic Client Registration (RFC 7591/7592), backed by D1. RFC 7592

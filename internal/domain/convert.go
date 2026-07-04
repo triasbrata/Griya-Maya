@@ -34,8 +34,8 @@ type ConvertRequest struct {
 	// OutputPrefix is the R2 key prefix under which page-NNNN.avif are written.
 	// Defaults to "pages/<jobID>/".
 	OutputPrefix string `json:"outputPrefix,omitempty"`
-	// MangaID / ChapterID associate the produced pages with catalog rows.
-	MangaID   string `json:"mangaId,omitempty"`
+	// MediaID / ChapterID associate the produced pages with catalog rows.
+	MediaID   string `json:"mediaId,omitempty"`
 	ChapterID string `json:"chapterId,omitempty"`
 }
 
@@ -45,7 +45,7 @@ type ConvertJob struct {
 	SourceKey    string        `json:"sourceKey"`
 	Format       ArchiveFormat `json:"format"`
 	OutputPrefix string        `json:"outputPrefix"`
-	MangaID      string        `json:"mangaId,omitempty"`
+	MediaID      string        `json:"mediaId,omitempty"`
 	ChapterID    string        `json:"chapterId,omitempty"`
 	Status       ConvertStatus `json:"status"`
 	PageCount    int           `json:"pageCount"`

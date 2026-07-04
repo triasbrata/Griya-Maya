@@ -5,19 +5,40 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/triasbrata/mihon-manga-server/internal/convert"
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
-// MangaRepository is the catalog persistence port (implemented by d1.MangaRepo).
-type MangaRepository interface {
-	List(ctx context.Context, sourceID, order string, page, perPage int, filter domain.CatalogFilter) (domain.MangaPage, error)
-	Search(ctx context.Context, sourceID, query string, page, perPage int, filter domain.CatalogFilter) (domain.MangaPage, error)
-	Genres(ctx context.Context, sourceID string) ([]domain.GenreTag, error)
-	Get(ctx context.Context, id string) (domain.Manga, error)
-	Chapters(ctx context.Context, mangaID string) ([]domain.Chapter, error)
+// MediaRepository is the catalog persistence port (implemented by d1.MediaRepo).
+// It covers reads (browse/detail/pages), media + chapter writes, and taxonomy
+// management for the unified media entity.
+type MediaRepository interface {
+	// Reads.
+	List(ctx context.Context, sourceID, order string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
+	Search(ctx context.Context, sourceID, query string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
+	Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
+	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
+	Get(ctx context.Context, id string) (domain.Media, error)
+	Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error)
 	Pages(ctx context.Context, chapterID string) ([]domain.StoredPage, error)
+
+	// Media writes.
+	CreateMedia(ctx context.Context, m domain.Media) error
+	UpdateMedia(ctx context.Context, m domain.Media) error
+	DeleteMedia(ctx context.Context, id string) error
+
+	// Chapter writes.
+	CreateChapter(ctx context.Context, c domain.Chapter) error
+	UpdateChapter(ctx context.Context, c domain.Chapter) error
+	DeleteChapter(ctx context.Context, id string) error
+
+	// Taxonomy management (genre/category/author/artist).
+	ListTaxonomy(ctx context.Context, kind domain.TaxonomyKind) ([]domain.Taxonomy, error)
+	CreateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, name string) (domain.Taxonomy, error)
+	UpdateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id, name string) (domain.Taxonomy, error)
+	DeleteTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string) error
 }
 
 // JobRepository persists conversion jobs (implemented by d1.JobRepo).
@@ -33,6 +54,9 @@ type ObjectStore interface {
 	Get(ctx context.Context, key string) ([]byte, string, error)
 	Put(ctx context.Context, key string, data []byte, contentType string) error
 	PublicURL(key string) string
+	// PresignGet mints a short-lived direct-fetch URL for key so the client
+	// pulls bytes from R2 without a proxy hop.
+	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
 
 // ArchiveConverter turns an archive into AVIF pages (implemented by convert.Converter).

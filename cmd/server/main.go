@@ -32,6 +32,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/joho/godotenv"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 
@@ -39,6 +40,12 @@ import (
 )
 
 func main() {
+	// Load .env for local development. A missing file is not an error — in the
+	// Cloudflare Container configuration is injected straight into the
+	// environment. godotenv.Load never overwrites vars already set, so
+	// `set -a; source .env` and container-injected env always win.
+	_ = godotenv.Load()
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	fx.New(

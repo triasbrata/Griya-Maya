@@ -16,8 +16,21 @@ const claimsKey = "oidc.claims"
 
 // Middleware returns a Hertz handler that rejects requests lacking a valid
 // Bearer JWT access token. It verifies the token locally against the OP's
-// signing keys (issuer, signature, expiration) and enforces RequiredScope.
+// signing keys (issuer, signature, expiration) and enforces the provider-wide
+// RequiredScope (typically manga.write, gating ingest/convert).
 func (p *Provider) Middleware() app.HandlerFunc {
+	return p.middleware(p.requiredScope)
+}
+
+// MiddlewareScope is like Middleware but enforces a specific scope, letting
+// reads (manga.read) be gated independently from writes (manga.write).
+func (p *Provider) MiddlewareScope(scope string) app.HandlerFunc {
+	return p.middleware(scope)
+}
+
+// middleware builds the token-verifying handler enforcing the given scope. An
+// empty scope skips the scope check (any valid token passes).
+func (p *Provider) middleware(scope string) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		token := bearerToken(string(c.GetHeader("Authorization")))
 		if token == "" {
@@ -30,7 +43,7 @@ func (p *Provider) Middleware() app.HandlerFunc {
 			unauthorized(c, "invalid or expired token")
 			return
 		}
-		if p.requiredScope != "" && !hasScope(claims.Scopes, p.requiredScope) {
+		if scope != "" && !hasScope(claims.Scopes, scope) {
 			forbidden(c, "insufficient scope")
 			return
 		}

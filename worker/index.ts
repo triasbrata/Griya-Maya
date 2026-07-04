@@ -27,6 +27,7 @@ export class MangaServer extends Container {
     R2_ACCESS_KEY_ID: this.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: this.env.R2_SECRET_ACCESS_KEY,
     R2_PUBLIC_BASE_URL: this.env.R2_PUBLIC_BASE_URL,
+    PRESIGN_TTL_SEC: this.env.PRESIGN_TTL_SEC,
     // Cloudflare KV (short-lived OIDC state).
     KV_NAMESPACE_ID: this.env.KV_NAMESPACE_ID,
     // Embedded OpenID Provider.
@@ -36,6 +37,7 @@ export class MangaServer extends Container {
     OIDC_ADMIN_EMAIL: this.env.OIDC_ADMIN_EMAIL,
     OIDC_ADMIN_PASSWORD: this.env.OIDC_ADMIN_PASSWORD,
     ADMIN_REDIRECT_URIS: this.env.ADMIN_REDIRECT_URIS,
+    IOS_REDIRECT_URIS: this.env.IOS_REDIRECT_URIS,
   };
 }
 

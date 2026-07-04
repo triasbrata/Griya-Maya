@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -75,6 +76,22 @@ func (s *Store) Put(ctx context.Context, key string, data []byte, contentType st
 		return fmt.Errorf("r2 put %q: %w", key, err)
 	}
 	return nil
+}
+
+// PresignGet returns a short-lived SigV4 presigned GET URL for key, letting the
+// client fetch the object straight from R2 with no container proxy hop. The
+// signature lives in the query string (no auth header needed) and self-expires
+// after ttl (SigV4 max 7d). Used to gate page bytes behind an IdP-minted URL
+// while keeping the bucket fully private.
+func (s *Store) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	req, err := s3.NewPresignClient(s.client).PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("r2 presign %q: %w", key, err)
+	}
+	return req.URL, nil
 }
 
 // PublicURL returns a directly-fetchable URL for key when a public/custom R2

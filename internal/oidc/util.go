@@ -14,7 +14,10 @@ import (
 
 // Scopes supported by this provider.
 const (
+	// ScopeMangaWrite gates ingest/convert routes.
 	ScopeMangaWrite = "manga.write"
+	// ScopeMangaRead gates reader routes that hand out presigned R2 page URLs.
+	ScopeMangaRead = "manga.read"
 )
 
 // --- D1 JSON value helpers (values arrive as string / float64 / nil) ---

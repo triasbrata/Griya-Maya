@@ -1,0 +1,58 @@
+# Changelog
+
+Human/AI-authored log of logical changes. Newest at the bottom. See CLAUDE.md §0
+for the required entry format.
+
+## 2026-07-04 — Secure R2 page bytes via IdP-gated presigned URLs
+- What:
+  - Added `PresignGet` to the R2 store and `ObjectStore` port; page URLs are now
+    short-lived SigV4 presigned links (direct client→R2, no proxy hop).
+  - Added `manga.read` scope + `MiddlewareScope`; gated `/v1/chapters/:id/pages`
+    and the retired `/v1/image` proxy behind it. Catalog reads stay public.
+  - Seeded a public `mihon-ios` PKCE client (Authorization Code + PKCE, no secret);
+    admin client also granted `manga.read`. New `PRESIGN_TTL_SEC` + `IOS_REDIRECT_URIS` env.
+- Why: make R2 bytes reachable only through an IdP-authenticated flow without
+  routing bytes through the Go container (plan: bagaimana-mengamankan-r2-untuk-groovy-quokka).
+- Files: internal/repository/r2/store.go, internal/service/{ports.go,manga_service.go},
+  internal/oidc/{util.go,provider.go,middleware.go,seed.go,storage.go},
+  internal/server/router.go, internal/config/config.go, internal/app/module.go,
+  internal/handler/manga_handler.go, .env.example, wrangler.jsonc, worker/index.ts,
+  regenerated mocks + swagger.
+- Tests: updated internal/service/manga_service_test.go (presign fallback + error);
+  `go build ./... && go vet ./... && go test ./...` → 107 pass.
+
+## 2026-07-04 — Add CLAUDE.md project guide + changes.log workflow
+- What: authored CLAUDE.md (file map, tech stack + usage, folder/layer explanation,
+  dev recipes, coverage ≥80% rule on business layers, changes.log rule); created this log.
+- Why: guide future AI/human work — locate code without grep, enforce logging,
+  coverage, and generated-artifact regeneration.
+- Files: CLAUDE.md, changes.log.
+- Tests: docs-only; no code change (build/tests unaffected).
+
+## 2026-07-04 — Generalize catalog to unified `media` + normalized taxonomies + full CRUD
+- What:
+  - Migration 0004: renamed table `manga`→`media` (+ `type` manga|video|novel),
+    renamed FK columns to `media_id`, normalized genre/category/author/artist into
+    tables + join tables, back-filled existing genres(CSV)/author/artist.
+  - Domain: `Manga`→`Media` (+ `Type`, name-array taxonomies), `Chapter.MediaID`,
+    generic `Taxonomy`/`TaxonomyKind`, `MediaWriteRequest`/`ChapterWriteRequest`/
+    `TaxonomyWriteRequest`, `CatalogFilter` type + category dimensions.
+  - Repo: `MangaRepo`→`MediaRepo`; group_concat(char(31)) taxonomy subqueries;
+    filter rewrite (type IN + genre/category EXISTS/COUNT); media/chapter CRUD +
+    taxonomy CRUD (`taxTableFor` allowlist). `job_repo` media_id.
+  - Services: `MangaService`→`MediaService` + media/chapter CRUD; new
+    `TaxonomyService`. Handlers: `MediaHandler` + `TaxonomyHandler`; routes replace
+    `/v1/manga*` with `/v1/media*`, add `/v1/taxonomies/{kind}`, gate management
+    behind manga.write.
+  - Full API replace (breaking): see docs/api-migration-media.md for the iOS agent.
+- Why: client consumes one endpoint set for all media kinds (type discriminator);
+  proper management + normalized, deduplicated taxonomies.
+- Files: migrations/0004_media_normalize.sql; internal/domain/{manga,convert}.go;
+  internal/repository/d1/{media_repo,job_repo,ports}.go; internal/service/{ports,
+  media_service,taxonomy_service,convert_service}.go; internal/handler/{ports,
+  media_handler,taxonomy_handler,response}.go; internal/server/router.go;
+  internal/app/module.go; .mockery.yaml + regenerated mocks + swagger; CLAUDE.md;
+  docs/api-migration-media.md.
+- Tests: rewrote repo/service/handler tests, added client + novel + taxonomy +
+  CRUD + error-path coverage. `go build/vet` clean; `go test ./...` → 159 pass;
+  gated pkg coverage: domain 100%, service 89.8%, handler 88.2%, d1 82.2% (all ≥80%).
