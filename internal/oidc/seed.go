@@ -29,10 +29,17 @@ func seedAdminClient(ctx context.Context, d1c *d1.Client, cfg config.OIDCConfig)
 	if len(redirects) == 0 {
 		redirects = []string{"http://localhost:3000/auth/callback"}
 	}
-	seedPublicClient(ctx, d1c, AdminClientID, "Mihon Admin Web", redirects, []string{
+	scopes := []string{
 		oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
 		oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
-	})
+		ScopeConnectionsWrite,
+	}
+	// Per-kind taxonomy write scopes (taksonomi.<kind>.write) so the admin panel
+	// can manage every taxonomy kind; reads are covered by manga.read above.
+	for _, k := range TaxonomyWriteKinds {
+		scopes = append(scopes, ScopeTaxonomyWrite(k))
+	}
+	seedPublicClient(ctx, d1c, AdminClientID, "Mihon Admin Web", redirects, scopes)
 }
 
 // seedIOSClient ensures the static `mihon-ios` public PKCE client exists in D1.

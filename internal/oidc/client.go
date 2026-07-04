@@ -52,9 +52,21 @@ func (c *Client) RestrictAdditionalAccessTokenScopes() func(scopes []string) []s
 	return func(scopes []string) []string { return scopes }
 }
 
-// IsScopeAllowed permits our custom write scope on top of the standard ones.
+// IsScopeAllowed permits our custom scopes on top of the standard ones. zitadel
+// (ValidateAuthReqScopes) drops any non-standard scope this rejects, so every
+// custom scope we gate on must be listed here or it never reaches a token.
 func (c *Client) IsScopeAllowed(scope string) bool {
-	return scope == ScopeMangaWrite
+	switch scope {
+	case ScopeMangaWrite, ScopeMangaRead, ScopeConnectionsWrite:
+		return true
+	}
+	// Per-kind taxonomy write scopes: taksonomi.<kind>.write.
+	for _, k := range TaxonomyWriteKinds {
+		if scope == ScopeTaxonomyWrite(k) {
+			return true
+		}
+	}
+	return false
 }
 
 // clientFromRow maps a D1 oidc_client row onto a Client.

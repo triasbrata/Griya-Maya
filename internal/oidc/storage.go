@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
@@ -400,7 +401,18 @@ func (s *Storage) SetIntrospectionFromToken(ctx context.Context, introspection *
 }
 
 func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, userID, clientID string, scopes []string) (map[string]any, error) {
-	return nil, nil
+	// zitadel's JWT access-token builder (op.CreateJWT) never sets the standard
+	// `scope` claim itself — it only merges whatever this method returns. Without
+	// this, JWT access tokens ship with no `scope` claim, so the Bearer
+	// middleware's scope gate (middleware.go) sees empty claims.Scopes and rejects
+	// every otherwise-valid token on manga.read/manga.write routes. Emit the
+	// granted scopes so the gate can enforce them via local JWT verification, no
+	// introspection round-trip. (zitadel has already stripped the userinfo-only
+	// scopes profile/email/address/phone before calling this.)
+	if len(scopes) == 0 {
+		return nil, nil
+	}
+	return map[string]any{"scope": strings.Join(scopes, " ")}, nil
 }
 
 func (s *Storage) GetKeyByIDAndClientID(ctx context.Context, keyID, clientID string) (*jose.JSONWebKey, error) {

@@ -117,3 +117,74 @@ for the required entry format.
 - Tests: `go build ./...` + `go vet ./internal/...` pass; gofmt clean. internal/
   server & internal/config are infra (exempt from the 80% bar). Redeploy required;
   for local/tunnel dev the Go server picks up the default allowlist.
+
+## 2026-07-04 — Fix duplicate CORS header on OIDC discovery endpoint
+- What: disabled the zitadel OP's built-in CORS layer via `op.WithCORSOptions(nil)`
+  in internal/oidc/provider.go, so CORS is owned solely by the Hertz global
+  middleware (router.go).
+- Why: zitadel's default CORS echoes any request Origin into
+  Access-Control-Allow-Origin, duplicating the header the Hertz cors middleware
+  already sets on OP-served routes (e.g. /.well-known/openid-configuration).
+  Browsers reject responses carrying two Access-Control-Allow-Origin values
+  ("contains multiple values 'http://localhost:3000, http://localhost:3000'"),
+  breaking the admin panel's OIDC discovery / signin.
+- Files: internal/oidc/provider.go
+- Tests: go build ./... + go vet ./internal/oidc/... clean; go test ./... → 205 pass.
+
+## 2026-07-04 — Fix: JWT access tokens carried no `scope` claim (all gated routes 403)
+- What: implemented `GetPrivateClaimsFromScopes` in internal/oidc/storage.go to
+  emit the granted scopes as a `scope` private claim (was `return nil, nil`).
+- Why: zitadel's JWT builder (op.CreateJWT) never sets the standard `scope` claim
+  itself — it only merges private claims from this method. With it empty, every
+  JWT shipped without `scope`, so the Bearer middleware's scope gate saw an empty
+  claims.Scopes and rejected every valid token on manga.read/manga.write routes
+  (e.g. admin panel's GET/POST /v1/connections, media/chapter/taxonomy CRUD).
+  Latent since the gate was added; surfaced now that the admin panel exercises
+  gated routes in a real browser.
+- Files: internal/oidc/storage.go
+- Tests: go build ./... + go vet ./internal/oidc/... clean; go test ./... → 205
+  pass. Verified end-to-end with a throwaway round-trip test (removed): the minted
+  token JSON now contains `"scope":"openid offline_access manga.write manga.read"`
+  and unmarshals back into claims.Scopes so hasScope() matches. internal/oidc is
+  coverage-exempt infra.
+
+## 2026-07-04 — Gate /v1/connections behind a dedicated connections.write scope
+- What:
+  - New scope const ScopeConnectionsWrite="connections.write" (internal/oidc/util.go),
+    added to the OP's SupportedScopes (provider.go) and the admin-web seed (seed.go).
+  - Fixed Client.IsScopeAllowed (client.go): was `return scope == ScopeMangaWrite`,
+    which silently dropped manga.read and would drop connections.write in the
+    auth-code flow (zitadel ValidateAuthReqScopes deletes any non-standard scope
+    IsScopeAllowed rejects). Now allows manga.read/manga.write/connections.write.
+  - Moved the 8 /v1/connections routes out of the manga.write `manage` group into
+    their own group gated by MiddlewareScope(connections.write) (router.go).
+- Why: managing upstream OAuth credentials (MyAnimeList etc.) should be authorized
+  separately from catalog writes.
+- Files: internal/oidc/util.go, internal/oidc/provider.go, internal/oidc/client.go,
+  internal/oidc/seed.go, internal/server/router.go
+- Tests: go build ./... + go vet ./internal/... clean; go test ./... → 205 pass.
+  internal/oidc + internal/server are coverage-exempt infra.
+- Ops: existing admin-web client row already in D1 won't be re-seeded — add the
+  scope manually (SQL below) and re-login to mint a token carrying it.
+
+## 2026-07-04 — Per-kind taxonomy write scopes (taksonomi.<kind>.write); reads use manga.read
+- What:
+  - Added per-kind taxonomy write scopes taksonomi.<kind>.write (kind ∈ genres |
+    categories | authors | artists): helper ScopeTaxonomyWrite + TaxonomyWriteKinds
+    (util.go), advertised in SupportedScopes (provider.go), allowed in
+    Client.IsScopeAllowed (client.go), seeded on admin-web (seed.go).
+  - New Provider.MiddlewareTaxonomyWrite() resolves the required scope from the
+    :kind path param at request time (refactored the internal middleware to take a
+    per-request scope resolver instead of a fixed string). Unknown kinds resolve to
+    no scope and fall through to the handler's 404.
+  - router.go: GET /v1/taxonomies/:kind moved to the manga.read group; POST/PUT/
+    DELETE moved to a new group gated by MiddlewareTaxonomyWrite(). Same set of
+    (method, path) pairs as before, only the middleware chain changed.
+- Why: let each taxonomy kind's write access be delegated independently, while
+  taxonomy reads only need the existing reader scope.
+- Files: internal/oidc/util.go, provider.go, client.go, seed.go, middleware.go,
+  internal/server/router.go
+- Tests: go build ./... + go vet ./internal/... clean; gofmt clean; go test ./... →
+  205 pass. internal/oidc + internal/server are coverage-exempt infra.
+- Ops: existing admin-web D1 row won't be re-seeded — add the 4 new scopes and
+  re-login (see message for SQL). Admin panel must request taksonomi.<kind>.write.

@@ -26,6 +26,15 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 	var key [32]byte
 	copy(key[:], []byte(cfg.CryptoKey))
 
+	supportedScopes := []string{
+		oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
+		oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
+		ScopeConnectionsWrite,
+	}
+	for _, k := range TaxonomyWriteKinds {
+		supportedScopes = append(supportedScopes, ScopeTaxonomyWrite(k))
+	}
+
 	opConfig := &op.Config{
 		CryptoKey:                key,
 		DefaultLogoutRedirectURI: "/logged-out",
@@ -33,13 +42,15 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 		AuthMethodPost:           true,
 		GrantTypeRefreshToken:    true,
 		SupportedUILocales:       []language.Tag{language.English},
-		SupportedScopes: []string{
-			oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
-			oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
-		},
+		SupportedScopes:          supportedScopes,
 	}
 
-	var opts []op.Option
+	// Disable the OP's built-in CORS layer. zitadel's default echoes any
+	// request Origin into Access-Control-Allow-Origin, which would duplicate the
+	// header the Hertz server already sets (router.go), and browsers reject a
+	// response carrying two Access-Control-Allow-Origin values. CORS is owned
+	// solely by the Hertz server.
+	opts := []op.Option{op.WithCORSOptions(nil)}
 	if strings.HasPrefix(cfg.Issuer, "http://") {
 		// Allow the http issuer used in local dev; production uses https.
 		opts = append(opts, op.WithAllowInsecure())

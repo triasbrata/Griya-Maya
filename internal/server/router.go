@@ -115,10 +115,14 @@ func New(p RouterParams) *server.Hertz {
 	{
 		read.GET("/chapters/:id/pages", p.Media.Pages)
 		read.GET("/image", p.Media.Image)
+
+		// Taxonomy reads share the reader scope: listing genres/categories/
+		// authors/artists needs only manga.read.
+		read.GET("/taxonomies/:kind", p.Taxonomy.List)
 	}
 
-	// Catalog management (gated by manga.write): create/update/delete media,
-	// chapters, and the normalized taxonomies (genres/categories/authors/artists).
+	// Catalog management (gated by manga.write): create/update/delete media and
+	// chapters.
 	manage := h.Group("/v1", p.OIDC.Middleware())
 	{
 		manage.POST("/media", p.Media.CreateMedia)
@@ -127,24 +131,33 @@ func New(p RouterParams) *server.Hertz {
 		manage.POST("/media/:id/chapters", p.Media.CreateChapter)
 		manage.PUT("/chapters/:id", p.Media.UpdateChapter)
 		manage.DELETE("/chapters/:id", p.Media.DeleteChapter)
+	}
 
-		// Taxonomy management: /v1/taxonomies/{kind} where kind is one of
-		// genres | categories | authors | artists.
-		manage.GET("/taxonomies/:kind", p.Taxonomy.List)
-		manage.POST("/taxonomies/:kind", p.Taxonomy.Create)
-		manage.PUT("/taxonomies/:kind/:id", p.Taxonomy.Update)
-		manage.DELETE("/taxonomies/:kind/:id", p.Taxonomy.Delete)
+	// Taxonomy mutations, gated per kind by taksonomi.<kind>.write (resolved from
+	// the :kind path param) so each taxonomy can be delegated independently.
+	// /v1/taxonomies/{kind} where kind is one of genres | categories | authors |
+	// artists. Reads live in the manga.read group above.
+	taxonomy := h.Group("/v1", p.OIDC.MiddlewareTaxonomyWrite())
+	{
+		taxonomy.POST("/taxonomies/:kind", p.Taxonomy.Create)
+		taxonomy.PUT("/taxonomies/:kind/:id", p.Taxonomy.Update)
+		taxonomy.DELETE("/taxonomies/:kind/:id", p.Taxonomy.Delete)
+	}
 
-		// External-source OAuth connections (MyAnimeList first). The authorize →
-		// callback → refresh flow stores encrypted tokens for later use.
-		manage.POST("/connections", p.Connection.Create)
-		manage.GET("/connections", p.Connection.List)
-		manage.GET("/connections/:id", p.Connection.Get)
-		manage.PUT("/connections/:id", p.Connection.Update)
-		manage.DELETE("/connections/:id", p.Connection.Delete)
-		manage.POST("/connections/:id/authorize", p.Connection.Authorize)
-		manage.POST("/connections/callback", p.Connection.Callback)
-		manage.POST("/connections/:id/refresh", p.Connection.Refresh)
+	// External-source OAuth connections (MyAnimeList first), gated by their own
+	// connections.write scope so managing upstream credentials is authorized
+	// separately from catalog writes. The authorize → callback → refresh flow
+	// stores encrypted tokens for later use.
+	connections := h.Group("/v1", p.OIDC.MiddlewareScope(oidc.ScopeConnectionsWrite))
+	{
+		connections.POST("/connections", p.Connection.Create)
+		connections.GET("/connections", p.Connection.List)
+		connections.GET("/connections/:id", p.Connection.Get)
+		connections.PUT("/connections/:id", p.Connection.Update)
+		connections.DELETE("/connections/:id", p.Connection.Delete)
+		connections.POST("/connections/:id/authorize", p.Connection.Authorize)
+		connections.POST("/connections/callback", p.Connection.Callback)
+		connections.POST("/connections/:id/refresh", p.Connection.Refresh)
 	}
 
 	// Conversion (protected by the OIDC access-token middleware).

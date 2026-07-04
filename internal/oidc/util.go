@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,7 +19,24 @@ const (
 	ScopeMangaWrite = "manga.write"
 	// ScopeMangaRead gates reader routes that hand out presigned R2 page URLs.
 	ScopeMangaRead = "manga.read"
+	// ScopeConnectionsWrite gates the external-source OAuth connection routes
+	// (/v1/connections) independently of the catalog write scope.
+	ScopeConnectionsWrite = "connections.write"
 )
+
+// TaxonomyWriteKinds are the URL :kind path segments (plural) that each carry
+// their own taxonomy write scope (taksonomi.<kind>.write). Taxonomy reads are
+// gated by ScopeMangaRead instead, so they are not listed here.
+var TaxonomyWriteKinds = []string{"genres", "categories", "authors", "artists"}
+
+// ScopeTaxonomyWrite returns the per-kind taxonomy write scope for a URL :kind
+// segment, e.g. "genres" -> "taksonomi.genres.write".
+func ScopeTaxonomyWrite(kind string) string { return "taksonomi." + kind + ".write" }
+
+// isTaxonomyWriteKind reports whether kind is a known taxonomy URL segment.
+func isTaxonomyWriteKind(kind string) bool {
+	return slices.Contains(TaxonomyWriteKinds, kind)
+}
 
 // --- D1 JSON value helpers (values arrive as string / float64 / nil) ---
 

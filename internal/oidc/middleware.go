@@ -19,18 +19,34 @@ const claimsKey = "oidc.claims"
 // signing keys (issuer, signature, expiration) and enforces the provider-wide
 // RequiredScope (typically manga.write, gating ingest/convert).
 func (p *Provider) Middleware() app.HandlerFunc {
-	return p.middleware(p.requiredScope)
+	return p.middleware(func(*app.RequestContext) string { return p.requiredScope })
 }
 
 // MiddlewareScope is like Middleware but enforces a specific scope, letting
 // reads (manga.read) be gated independently from writes (manga.write).
 func (p *Provider) MiddlewareScope(scope string) app.HandlerFunc {
-	return p.middleware(scope)
+	return p.middleware(func(*app.RequestContext) string { return scope })
 }
 
-// middleware builds the token-verifying handler enforcing the given scope. An
-// empty scope skips the scope check (any valid token passes).
-func (p *Provider) middleware(scope string) app.HandlerFunc {
+// MiddlewareTaxonomyWrite gates taxonomy mutations on a per-kind write scope
+// (taksonomi.<kind>.write) resolved from the :kind path param, so e.g. editing
+// genres needs taksonomi.genres.write. Unknown kinds resolve to no scope and are
+// left to the handler's 404 (there is nothing to authorize for a kind that does
+// not exist).
+func (p *Provider) MiddlewareTaxonomyWrite() app.HandlerFunc {
+	return p.middleware(func(c *app.RequestContext) string {
+		kind := c.Param("kind")
+		if !isTaxonomyWriteKind(kind) {
+			return ""
+		}
+		return ScopeTaxonomyWrite(kind)
+	})
+}
+
+// middleware builds the token-verifying handler enforcing the scope returned by
+// scopeFor for the request. A "" scope skips the scope check (any valid token
+// passes), letting callers defer unknown-resource cases to the handler.
+func (p *Provider) middleware(scopeFor func(*app.RequestContext) string) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		token := bearerToken(string(c.GetHeader("Authorization")))
 		if token == "" {
@@ -43,7 +59,7 @@ func (p *Provider) middleware(scope string) app.HandlerFunc {
 			unauthorized(c, "invalid or expired token")
 			return
 		}
-		if scope != "" && !hasScope(claims.Scopes, scope) {
+		if scope := scopeFor(c); scope != "" && !hasScope(claims.Scopes, scope) {
 			forbidden(c, "insufficient scope")
 			return
 		}
