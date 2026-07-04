@@ -1,0 +1,10 @@
+{
+  // TanStack Start admin app deployed to Cloudflare Workers.
+  // Build with DEPLOY_TARGET=cloudflare-module (see vite.config.ts), then deploy.
+  "name": "mihon-manga-admin",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": ".output/server/index.mjs",
+  "assets": { "directory": ".output/public" },
+  "observability": { "enabled": true }
+}

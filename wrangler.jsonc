@@ -1,0 +1,61 @@
+{
+  // Fronting Worker that routes edge traffic to the Go container.
+  "name": "mihon-manga-server",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-06-01",
+
+  // The Go server, built from the Dockerfile in this directory.
+  "containers": [
+    {
+      "class_name": "MangaServer",
+      "image": "./Dockerfile",
+      "instance_type": "standard",
+      "max_instances": 5
+    }
+  ],
+
+  // Durable Object that backs the container lifecycle.
+  "durable_objects": {
+    "bindings": [
+      { "name": "MANGA_SERVER", "class_name": "MangaServer" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MangaServer"] }
+  ],
+
+  // Resources. The Go container reaches R2 via the S3 API and D1 via the REST
+  // API using the credentials below, so these bindings are declared mostly to
+  // provision + document the resources. `database_id` is filled by
+  // `wrangler d1 create manga`.
+  "r2_buckets": [
+    { "binding": "MANGA_BUCKET", "bucket_name": "manga" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "manga", "database_id": "REPLACE_WITH_D1_ID" }
+  ],
+
+  // KV namespace holding short-lived OIDC state (auth requests, codes, access
+  // tokens) with per-key TTL. The Go container reaches KV via the REST API using
+  // CF_ACCOUNT_ID + CF_API_TOKEN + KV_NAMESPACE_ID.
+  "kv_namespaces": [
+    { "binding": "MANGA_KV", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+
+  // Non-secret vars. Secrets (CF_API_TOKEN, R2_*, OIDC_CRYPTO_KEY,
+  // OIDC_ADMIN_PASSWORD) are set with `wrangler secret put <NAME>` and injected
+  // into the container by worker/index.ts.
+  "vars": {
+    "PUBLIC_BASE_URL": "https://mihon-manga-server.example.workers.dev",
+    "CF_ACCOUNT_ID": "REPLACE_WITH_ACCOUNT_ID",
+    "KV_NAMESPACE_ID": "REPLACE_WITH_KV_NAMESPACE_ID",
+    "R2_BUCKET": "manga",
+    "R2_PUBLIC_BASE_URL": "",
+    "OIDC_ISSUER": "https://mihon-manga-server.example.workers.dev",
+    "OIDC_REQUIRED_SCOPE": "manga.write",
+    "OIDC_ADMIN_EMAIL": "admin@example.com",
+    "ADMIN_REDIRECT_URIS": "http://localhost:3000/auth/callback"
+  },
+
+  "observability": { "enabled": true }
+}

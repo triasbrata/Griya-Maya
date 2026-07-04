@@ -1,0 +1,8 @@
+node_modules/
+.output/
+.nitro/
+.vinxi/
+dist/
+.env
+src/routeTree.gen.ts
+.wrangler/

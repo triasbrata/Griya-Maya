@@ -1,0 +1,805 @@
+basePath: /
+definitions:
+  domain.ArchiveFormat:
+    enum:
+    - cbz
+    - epub
+    - pdf
+    type: string
+    x-enum-varnames:
+    - FormatCBZ
+    - FormatEPUB
+    - FormatPDF
+  domain.Chapter:
+    properties:
+      dateUpload:
+        type: string
+      format:
+        description: |-
+          Format is the stored artifact type when this chapter was ingested from an
+          archive ("cbz" | "epub" | "pdf" | ""). Empty means remote-only.
+        type: string
+      id:
+        type: string
+      mangaId:
+        type: string
+      name:
+        type: string
+      number:
+        type: number
+      scanlator:
+        type: string
+      url:
+        type: string
+    type: object
+  domain.ConvertJob:
+    properties:
+      chapterId:
+        type: string
+      createdAt:
+        type: string
+      error:
+        type: string
+      format:
+        $ref: '#/definitions/domain.ArchiveFormat'
+      id:
+        type: string
+      mangaId:
+        type: string
+      outputPrefix:
+        type: string
+      pageCount:
+        type: integer
+      sourceKey:
+        type: string
+      status:
+        $ref: '#/definitions/domain.ConvertStatus'
+      updatedAt:
+        type: string
+    type: object
+  domain.ConvertRequest:
+    properties:
+      chapterId:
+        type: string
+      format:
+        allOf:
+        - $ref: '#/definitions/domain.ArchiveFormat'
+        description: Format overrides format detection when set.
+      mangaId:
+        description: MangaID / ChapterID associate the produced pages with catalog
+          rows.
+        type: string
+      outputPrefix:
+        description: |-
+          OutputPrefix is the R2 key prefix under which page-NNNN.avif are written.
+          Defaults to "pages/<jobID>/".
+        type: string
+      sourceKey:
+        description: SourceKey is the R2 object key of the CBZ/EPUB/PDF to convert.
+        type: string
+    type: object
+  domain.ConvertStatus:
+    enum:
+    - pending
+    - running
+    - done
+    - failed
+    type: string
+    x-enum-varnames:
+    - ConvertPending
+    - ConvertRunning
+    - ConvertDone
+    - ConvertFailed
+  domain.GenreTag:
+    properties:
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  domain.Manga:
+    properties:
+      artist:
+        type: string
+      author:
+        type: string
+      coverUrl:
+        type: string
+      description:
+        type: string
+      genres:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      sourceId:
+        type: string
+      status:
+        $ref: '#/definitions/domain.MangaStatus'
+      title:
+        type: string
+      updatedAt:
+        type: string
+      url:
+        type: string
+    type: object
+  domain.MangaPage:
+    properties:
+      hasNext:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/domain.Manga'
+        type: array
+      page:
+        type: integer
+    type: object
+  domain.MangaStatus:
+    enum:
+    - unknown
+    - ongoing
+    - completed
+    - licensed
+    - hiatus
+    - cancelled
+    - publishing_finished
+    type: string
+    x-enum-varnames:
+    - StatusUnknown
+    - StatusOngoing
+    - StatusCompleted
+    - StatusLicensed
+    - StatusHiatus
+    - StatusCancelled
+    - StatusPublishing
+  domain.Page:
+    properties:
+      height:
+        type: integer
+      imageUrl:
+        type: string
+      index:
+        type: integer
+      width:
+        type: integer
+    type: object
+  handler.ErrorResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+  handler.UploadResponse:
+    properties:
+      sourceKey:
+        type: string
+    type: object
+  oidc.clientMetadata:
+    properties:
+      application_type:
+        type: string
+      client_name:
+        type: string
+      grant_types:
+        items:
+          type: string
+        type: array
+      post_logout_redirect_uris:
+        items:
+          type: string
+        type: array
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      response_types:
+        items:
+          type: string
+        type: array
+      scope:
+        type: string
+      token_endpoint_auth_method:
+        type: string
+    type: object
+  oidc.dcrErrorResponse:
+    properties:
+      error:
+        type: string
+      error_description:
+        type: string
+    type: object
+  oidc.registrationResponse:
+    properties:
+      application_type:
+        type: string
+      client_id:
+        type: string
+      client_id_issued_at:
+        type: integer
+      client_name:
+        type: string
+      client_secret:
+        type: string
+      client_secret_expires_at:
+        type: integer
+      grant_types:
+        items:
+          type: string
+        type: array
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      registration_access_token:
+        type: string
+      registration_client_uri:
+        type: string
+      response_types:
+        items:
+          type: string
+        type: array
+      scope:
+        type: string
+      token_endpoint_auth_method:
+        type: string
+    type: object
+  service.ConvertResult:
+    properties:
+      job:
+        $ref: '#/definitions/domain.ConvertJob'
+      pages:
+        items:
+          $ref: '#/definitions/domain.Page'
+        type: array
+    type: object
+info:
+  contact: {}
+  description: Manga catalog + reader API that mirrors the Mihon iOS SourceRuntime
+    contract, plus CBZ/EPUB/PDF -> AVIF conversion backed by Cloudflare R2/D1. Write
+    endpoints are protected by an embedded OpenID Provider; clients onboard via OAuth2
+    Dynamic Client Registration (RFC 7591/7592).
+  title: Mihon Manga Server
+  version: 0.1.0
+paths:
+  /connect/register:
+    post:
+      consumes:
+      - application/json
+      description: Dynamic Client Registration. Unauthenticated. Returns the new client_id
+        plus a registration_access_token used to manage the client via RFC 7592. A
+        client_secret is issued unless token_endpoint_auth_method is "none".
+      parameters:
+      - description: Client metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/oidc.clientMetadata'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/oidc.registrationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+      summary: Register an OAuth2 client (RFC 7591)
+      tags:
+      - oauth
+  /connect/register/{id}:
+    delete:
+      parameters:
+      - description: Client ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+      security:
+      - RegistrationToken: []
+      summary: Delete a client's registration (RFC 7592)
+      tags:
+      - oauth
+    get:
+      parameters:
+      - description: Client ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/oidc.registrationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+      security:
+      - RegistrationToken: []
+      summary: Read a client's registration (RFC 7592)
+      tags:
+      - oauth
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated client metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/oidc.clientMetadata'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/oidc.registrationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/oidc.dcrErrorResponse'
+      security:
+      - RegistrationToken: []
+      summary: Update a client's registration (RFC 7592)
+      tags:
+      - oauth
+  /healthz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Liveness probe
+      tags:
+      - system
+  /v1/chapters/{id}/pages:
+    get:
+      parameters:
+      - description: Chapter ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Page'
+            type: array
+      summary: Page list (AVIF image URLs) for a chapter
+      tags:
+      - reader
+  /v1/convert:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Conversion request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.ConvertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.ConvertResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Convert an archive already in R2 into AVIF pages (stored in R2).
+      tags:
+      - convert
+  /v1/convert/jobs/{id}:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ConvertJob'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a conversion job's status.
+      tags:
+      - convert
+  /v1/convert/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: Archive file
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Target R2 key (defaults to uploads/{uuid})
+        in: formData
+        name: key
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handler.UploadResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a CBZ/EPUB/PDF archive into R2 (multipart field "file").
+      tags:
+      - convert
+  /v1/image:
+    get:
+      parameters:
+      - description: R2 object key
+        in: query
+        name: key
+        required: true
+        type: string
+      produces:
+      - image/avif
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      summary: Proxy an AVIF page object from R2 (used when no public R2 domain).
+      tags:
+      - reader
+  /v1/manga/{id}:
+    get:
+      parameters:
+      - description: Manga ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Manga'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Manga details
+      tags:
+      - catalog
+  /v1/manga/{id}/chapters:
+    get:
+      parameters:
+      - description: Manga ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Chapter'
+            type: array
+      summary: Chapter list for a manga
+      tags:
+      - catalog
+  /v1/sources/{sourceId}/genres:
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.GenreTag'
+            type: array
+      summary: Filterable genres for a source
+      tags:
+      - catalog
+  /v1/sources/{sourceId}/latest:
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        type: string
+      - description: Page (1-based)
+        in: query
+        name: page
+        type: integer
+      - description: Sort key
+        enum:
+        - popular
+        - latest
+        - updated
+        - rating
+        - title
+        in: query
+        name: sort
+        type: string
+      - description: Sort direction
+        enum:
+        - asc
+        - desc
+        in: query
+        name: order
+        type: string
+      - collectionFormat: csv
+        description: 'Content-type tag (repeatable): manga|manhwa|manhua'
+        in: query
+        items:
+          type: string
+        name: type
+        type: array
+      - collectionFormat: csv
+        description: Include genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genre
+        type: array
+      - collectionFormat: csv
+        description: Exclude genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genreExclude
+        type: array
+      - description: Combine included genres
+        enum:
+        - or
+        - and
+        in: query
+        name: genreMode
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MangaPage'
+      summary: Latest-updated manga for a source
+      tags:
+      - catalog
+  /v1/sources/{sourceId}/popular:
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        type: string
+      - description: Page (1-based)
+        in: query
+        name: page
+        type: integer
+      - description: Sort key
+        enum:
+        - popular
+        - latest
+        - updated
+        - rating
+        - title
+        in: query
+        name: sort
+        type: string
+      - description: Sort direction
+        enum:
+        - asc
+        - desc
+        in: query
+        name: order
+        type: string
+      - collectionFormat: csv
+        description: 'Content-type tag (repeatable): manga|manhwa|manhua'
+        in: query
+        items:
+          type: string
+        name: type
+        type: array
+      - collectionFormat: csv
+        description: Include genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genre
+        type: array
+      - collectionFormat: csv
+        description: Exclude genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genreExclude
+        type: array
+      - description: Combine included genres
+        enum:
+        - or
+        - and
+        in: query
+        name: genreMode
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MangaPage'
+      summary: Popular manga for a source
+      tags:
+      - catalog
+  /v1/sources/{sourceId}/search:
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        type: string
+      - description: Query
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: Page (1-based)
+        in: query
+        name: page
+        type: integer
+      - description: Sort key
+        enum:
+        - popular
+        - latest
+        - updated
+        - rating
+        - title
+        in: query
+        name: sort
+        type: string
+      - description: Sort direction
+        enum:
+        - asc
+        - desc
+        in: query
+        name: order
+        type: string
+      - collectionFormat: csv
+        description: 'Content-type tag (repeatable): manga|manhwa|manhua'
+        in: query
+        items:
+          type: string
+        name: type
+        type: array
+      - collectionFormat: csv
+        description: Include genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genre
+        type: array
+      - collectionFormat: csv
+        description: Exclude genre slug (repeatable)
+        in: query
+        items:
+          type: string
+        name: genreExclude
+        type: array
+      - description: Combine included genres
+        enum:
+        - or
+        - and
+        in: query
+        name: genreMode
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MangaPage'
+      summary: Search manga within a source
+      tags:
+      - catalog
+securityDefinitions:
+  BearerAuth:
+    description: OAuth2 JWT access token issued by the embedded OpenID Provider. Use
+      "Bearer <token>".
+    in: header
+    name: Authorization
+    type: apiKey
+  RegistrationToken:
+    description: RFC 7592 registration_access_token. Use "Bearer <token>".
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
+tags:
+- name: catalog
+- name: reader
+- name: convert
+- name: oauth
+- name: system
