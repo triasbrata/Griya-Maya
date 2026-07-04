@@ -32,6 +32,11 @@ type HTTPConfig struct {
 	// PublicBaseURL is the externally reachable base URL (through the fronting
 	// Worker). Page image URLs handed to the app are built against it.
 	PublicBaseURL string
+	// CORSAllowOrigins is the browser origin allowlist for the admin panel. The
+	// admin is served from a different origin than this API (and reaches it via
+	// the cloudflared tunnel, bypassing the Worker), so the server must answer
+	// CORS preflights itself. Comma-separated in CORS_ALLOW_ORIGINS.
+	CORSAllowOrigins []string
 }
 
 // D1Config addresses a Cloudflare D1 database via the REST API.
@@ -115,6 +120,8 @@ func Load() (Config, error) {
 		HTTP: HTTPConfig{
 			Addr:          env("HTTP_ADDR", ":8080"),
 			PublicBaseURL: env("PUBLIC_BASE_URL", "http://localhost:8080"),
+			CORSAllowOrigins: splitCSV(env("CORS_ALLOW_ORIGINS",
+				"https://griyamedia.brata.cloud,http://localhost:3000")),
 		},
 		D1: D1Config{
 			AccountID:  os.Getenv("CF_ACCOUNT_ID"),

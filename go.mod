@@ -11,6 +11,7 @@ require (
 	github.com/gen2brain/go-fitz v1.28.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
+	github.com/hertz-contrib/cors v0.1.0
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5

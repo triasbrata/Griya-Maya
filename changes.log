@@ -101,15 +101,19 @@ for the required entry format.
   oauth_providers.go); (2) client_id is stored/served in plaintext (not a secret,
   present in the JSON contract), so only client_secret/tokens are encrypted.
 
-## 2026-07-04 — Edge CORS for the admin panel
-- What: worker/index.ts now answers the browser CORS preflight (OPTIONS → 204)
-  and appends Access-Control-Allow-* to forwarded responses, echoing the Origin
-  only when it is in an allowlist. Allowlist defaults to the admin prod origin +
-  localhost:3000, overridable via the new CORS_ALLOW_ORIGINS var (wrangler.jsonc).
-- Why: admin panel is a different origin than the API, so authenticated calls
-  (Authorization header) are preflighted. The Go/Hertz server registers no OPTIONS
-  routes and no CORS middleware, so preflights 404'd and browsers blocked every
-  cross-origin call (surfaced on GET /v1/connections).
-- Files: worker/index.ts, wrangler.jsonc
-- Tests: n/a (edge Worker glue, exempt from the Go 80% bar); `esbuild --bundle`
-  of worker/index.ts succeeds. Redeploy required (`bun run deploy` / wrangler).
+## 2026-07-04 — CORS for the admin panel (Hertz middleware)
+- What: added hertz-contrib/cors global middleware in internal/server/router.go
+  (echoes allowed Origin, handles the OPTIONS preflight → 204). Allowlist comes
+  from HTTP.CORSAllowOrigins (new), read from CORS_ALLOW_ORIGINS env, default
+  "https://griyamedia.brata.cloud,http://localhost:3000". The env is declared in
+  wrangler.jsonc and passed through to the container in worker/index.ts.
+- Why: the admin panel is a different origin than the API and reaches it via the
+  cloudflared tunnel (griyamedia-tunnel.brata.cloud) straight to Hertz — bypassing
+  the fronting Worker — so authenticated fetches were preflighted and 404'd (no
+  OPTIONS route, no CORS). Fixing it in Hertz covers both the tunnel and Worker
+  paths; an earlier Worker-only attempt didn't, since the tunnel skips the Worker.
+- Files: internal/server/router.go, internal/config/config.go, worker/index.ts,
+  wrangler.jsonc, go.mod, go.sum
+- Tests: `go build ./...` + `go vet ./internal/...` pass; gofmt clean. internal/
+  server & internal/config are infra (exempt from the 80% bar). Redeploy required;
+  for local/tunnel dev the Go server picks up the default allowlist.

@@ -40,78 +40,23 @@ export class MangaServer extends Container {
     IOS_REDIRECT_URIS: this.env.IOS_REDIRECT_URIS,
     // External-source OAuth connections: 32-byte key encrypting secrets/tokens.
     CONNECTIONS_ENC_KEY: this.env.CONNECTIONS_ENC_KEY,
+    // Browser CORS allowlist for the admin panel (comma-separated origins).
+    CORS_ALLOW_ORIGINS: this.env.CORS_ALLOW_ORIGINS,
   };
 }
 
 interface Env {
   MANGA_SERVER: DurableObjectNamespace;
-  // Comma-separated origin allowlist for browser (admin panel) CORS. Optional;
-  // falls back to the built-in defaults below when unset.
-  CORS_ALLOW_ORIGINS?: string;
   [key: string]: unknown;
-}
-
-// Origins allowed to call the API from a browser. The admin panel is served
-// from a different origin than this API (separate subdomain), so every
-// authenticated call is preflighted; without these headers the browser blocks
-// it. Overridable via the CORS_ALLOW_ORIGINS var (comma-separated).
-const DEFAULT_ALLOWED_ORIGINS = [
-  "https://griyamedia.brata.cloud",
-  "http://localhost:3000",
-];
-
-function allowedOrigins(env: Env): string[] {
-  const raw = env.CORS_ALLOW_ORIGINS;
-  if (!raw) return DEFAULT_ALLOWED_ORIGINS;
-  return raw
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-}
-
-// Build the CORS response headers for a request, echoing the Origin only when it
-// is in the allowlist. Returns an empty object for non-browser / disallowed
-// origins so nothing is leaked to unexpected callers.
-function corsHeaders(request: Request, env: Env): Record<string, string> {
-  const origin = request.headers.get("Origin");
-  if (!origin || !allowedOrigins(env).includes(origin)) return {};
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Vary": "Origin",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    // Reflect what the browser asked for (falls back to the headers we use).
-    "Access-Control-Allow-Headers":
-      request.headers.get("Access-Control-Request-Headers") ||
-      "Authorization, Content-Type",
-    "Access-Control-Max-Age": "86400",
-  };
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const cors = corsHeaders(request, env);
-
-    // Answer the CORS preflight at the edge — the Go server registers no OPTIONS
-    // routes, so letting it through would 404 the preflight.
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: cors });
-    }
-
     // One container instance per region is plenty for a stateless API; route by
-    // a fixed key so all requests share warm instances.
+    // a fixed key so all requests share warm instances. CORS (incl. the OPTIONS
+    // preflight) is handled inside the Go server so it applies to both this
+    // Worker path and the direct cloudflared-tunnel path.
     const container = getContainer(env.MANGA_SERVER, "manga-api");
-    const res = await container.fetch(request);
-
-    // Nothing to add for same-origin / disallowed origins.
-    if (Object.keys(cors).length === 0) return res;
-
-    // Response headers may be immutable; re-wrap so we can attach CORS headers.
-    const headers = new Headers(res.headers);
-    for (const [k, v] of Object.entries(cors)) headers.set(k, v);
-    return new Response(res.body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers,
-    });
+    return container.fetch(request);
   },
 };

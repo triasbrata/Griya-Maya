@@ -5,11 +5,13 @@ package server
 import (
 	"context"
 	_ "embed"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/adaptor"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	"github.com/hertz-contrib/cors"
 	"go.uber.org/fx"
 
 	"github.com/triasbrata/mihon-manga-server/internal/config"
@@ -28,12 +30,12 @@ var openAPISpec []byte
 type RouterParams struct {
 	fx.In
 
-	Config   config.Config
-	OIDC     *oidc.Provider
-	DCR      *oidc.DCRHandler
-	Health   *handler.HealthHandler
-	Media    *handler.MediaHandler
-	Taxonomy *handler.TaxonomyHandler
+	Config     config.Config
+	OIDC       *oidc.Provider
+	DCR        *oidc.DCRHandler
+	Health     *handler.HealthHandler
+	Media      *handler.MediaHandler
+	Taxonomy   *handler.TaxonomyHandler
 	Convert    *handler.ConvertHandler
 	Video      *handler.VideoHandler
 	Novel      *handler.NovelHandler
@@ -46,6 +48,18 @@ func New(p RouterParams) *server.Hertz {
 		server.WithHostPorts(p.Config.HTTP.Addr),
 		server.WithMaxRequestBodySize(512<<20), // 512 MiB uploads (archives)
 	)
+
+	// Browser CORS for the admin panel. It is served from a different origin and
+	// reaches the API through the cloudflared tunnel (bypassing the fronting
+	// Worker), so the server answers preflights itself — Hertz routes OPTIONS
+	// through this global middleware, which aborts 204 with the allow headers.
+	h.Use(cors.New(cors.Config{
+		AllowOrigins:     p.Config.HTTP.CORSAllowOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "Origin"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// System + docs (public).
 	h.GET("/healthz", p.Health.Health)
