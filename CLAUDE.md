@@ -51,6 +51,10 @@ Follow these on **every** task, no exceptions:
    - Changed a handler's `// @…` swagger annotation? Run `make docs` (swag). The
      embedded spec (`internal/server/swagger/*`) is the source of truth served at
      `/openapi.yaml` and `/docs`. Commit the regenerated files.
+   - **NEVER hand-edit `internal/server/swagger/*`** (`docs.go`, `swagger.json`,
+     `swagger.yaml`) — they are fully generated. Change the handler's `// @…`
+     annotations and run `make docs`; hand edits will be clobbered on the next
+     regen and drift the spec from the code.
 
 4. **Verify before declaring done:** `go build ./... && go vet ./... && go test ./...`.
 
