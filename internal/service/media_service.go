@@ -16,34 +16,83 @@ import (
 type MediaService struct {
 	repo          MediaRepository
 	store         ObjectStore
+	coverQueue    CoverMirrorQueue
 	publicBaseURL string
 	presignTTL    time.Duration
 }
 
 // NewMediaService wires a MediaService. presignTTL bounds how long the direct
-// R2 page URLs it mints stay valid.
-func NewMediaService(repo MediaRepository, store ObjectStore, publicBaseURL string, presignTTL time.Duration) *MediaService {
+// R2 page URLs it mints stay valid. coverQueue enqueues external cover images
+// for async mirroring into R2 (a no-op producer when the queue is unconfigured).
+func NewMediaService(repo MediaRepository, store ObjectStore, coverQueue CoverMirrorQueue, publicBaseURL string, presignTTL time.Duration) *MediaService {
 	return &MediaService{
 		repo:          repo,
 		store:         store,
+		coverQueue:    coverQueue,
 		publicBaseURL: strings.TrimRight(publicBaseURL, "/"),
 		presignTTL:    presignTTL,
 	}
 }
 
+// isMirroredCover reports whether a stored cover value is an R2 object key (the
+// mirrored form) rather than an external URL. Keys have no URL scheme.
+func isMirroredCover(cover string) bool {
+	return cover != "" && !strings.Contains(cover, "://")
+}
+
+// resolveCover turns a stored cover R2 key into a fetchable (presigned) URL,
+// leaving external URLs (not yet mirrored, or mirror failed) untouched.
+func (s *MediaService) resolveCover(ctx context.Context, m domain.Media) domain.Media {
+	if isMirroredCover(m.CoverURL) {
+		if u, err := s.pageURL(ctx, m.CoverURL); err == nil {
+			m.CoverURL = u
+		}
+	}
+	return m
+}
+
+// resolveCovers applies resolveCover across a page of media.
+func (s *MediaService) resolveCovers(ctx context.Context, p domain.MediaPage) domain.MediaPage {
+	for i := range p.Items {
+		p.Items[i] = s.resolveCover(ctx, p.Items[i])
+	}
+	return p
+}
+
+// enqueueCoverMirror schedules an external cover image to be mirrored into R2 as
+// AVIF (best-effort: a failed enqueue never fails the write).
+func (s *MediaService) enqueueCoverMirror(ctx context.Context, mediaID, cover string) {
+	if s.coverQueue == nil || cover == "" || isMirroredCover(cover) {
+		return
+	}
+	_ = s.coverQueue.Enqueue(ctx, domain.CoverMirrorJob{MediaID: mediaID, SourceURL: cover})
+}
+
 // Popular returns the most popular media for a source, honoring the filter.
 func (s *MediaService) Popular(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, filter)
+	res, err := s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, filter)
+	if err != nil {
+		return domain.MediaPage{}, err
+	}
+	return s.resolveCovers(ctx, res), nil
 }
 
 // Latest returns the most recently updated media for a source, honoring the filter.
 func (s *MediaService) Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.List(ctx, sourceID, "latest", page, domain.CatalogPageSize, filter)
+	res, err := s.repo.List(ctx, sourceID, "latest", page, domain.CatalogPageSize, filter)
+	if err != nil {
+		return domain.MediaPage{}, err
+	}
+	return s.resolveCovers(ctx, res), nil
 }
 
 // Search matches titles within a source, honoring the filter.
 func (s *MediaService) Search(ctx context.Context, sourceID, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.Search(ctx, sourceID, query, page, domain.CatalogPageSize, filter)
+	res, err := s.repo.Search(ctx, sourceID, query, page, domain.CatalogPageSize, filter)
+	if err != nil {
+		return domain.MediaPage{}, err
+	}
+	return s.resolveCovers(ctx, res), nil
 }
 
 // Recommendations returns content-based recommendations for a source: its
@@ -52,10 +101,19 @@ func (s *MediaService) Search(ctx context.Context, sourceID, query string, page 
 // exclude, or that share no requested genre, are omitted. With no genres it falls
 // back to the source's popular feed so the endpoint always returns something.
 func (s *MediaService) Recommendations(ctx context.Context, sourceID string, genres, exclude []string, page int) (domain.MediaPage, error) {
+	var (
+		res domain.MediaPage
+		err error
+	)
 	if len(genres) == 0 {
-		return s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, domain.CatalogFilter{})
+		res, err = s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, domain.CatalogFilter{})
+	} else {
+		res, err = s.repo.Recommend(ctx, sourceID, genres, exclude, page, domain.CatalogPageSize)
 	}
-	return s.repo.Recommend(ctx, sourceID, genres, exclude, page, domain.CatalogPageSize)
+	if err != nil {
+		return domain.MediaPage{}, err
+	}
+	return s.resolveCovers(ctx, res), nil
 }
 
 // Genres lists the distinct filterable genres seen across a source's catalog.
@@ -70,7 +128,11 @@ func (s *MediaService) Categories(ctx context.Context, sourceID string) ([]domai
 
 // Details returns one media entry.
 func (s *MediaService) Details(ctx context.Context, id string) (domain.Media, error) {
-	return s.repo.Get(ctx, id)
+	m, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return domain.Media{}, err
+	}
+	return s.resolveCover(ctx, m), nil
 }
 
 // Chapters returns a media entry's chapters.
@@ -160,7 +222,14 @@ func (s *MediaService) CreateMedia(ctx context.Context, req domain.MediaWriteReq
 	if err := s.repo.CreateMedia(ctx, m); err != nil {
 		return domain.Media{}, fmt.Errorf("create media: %w", err)
 	}
-	return s.repo.Get(ctx, m.ID)
+	// Mirror an external cover into R2 (AVIF) asynchronously; the stored cover
+	// stays the original URL until the mirror completes.
+	s.enqueueCoverMirror(ctx, m.ID, m.CoverURL)
+	saved, err := s.repo.Get(ctx, m.ID)
+	if err != nil {
+		return domain.Media{}, err
+	}
+	return s.resolveCover(ctx, saved), nil
 }
 
 // UpdateMedia rewrites an existing media entry, returning the stored row.
@@ -168,14 +237,29 @@ func (s *MediaService) UpdateMedia(ctx context.Context, id string, req domain.Me
 	if strings.TrimSpace(id) == "" {
 		return domain.Media{}, fmt.Errorf("%w: id is required", domain.ErrInvalidInput)
 	}
+	current, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return domain.Media{}, err
+	}
 	m, err := mediaFromRequest(id, req)
 	if err != nil {
 		return domain.Media{}, err
 	}
+	// Preserve an already-mirrored cover when the client re-submits the presigned
+	// URL of the same object (the resolved form it received on read), so we don't
+	// store an expiring URL or re-mirror needlessly.
+	if isMirroredCover(current.CoverURL) && strings.Contains(req.CoverURL, current.CoverURL) {
+		m.CoverURL = current.CoverURL
+	}
 	if err := s.repo.UpdateMedia(ctx, m); err != nil {
 		return domain.Media{}, fmt.Errorf("update media: %w", err)
 	}
-	return s.repo.Get(ctx, id)
+	s.enqueueCoverMirror(ctx, id, m.CoverURL)
+	saved, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return domain.Media{}, err
+	}
+	return s.resolveCover(ctx, saved), nil
 }
 
 // DeleteMedia removes a media entry and its chapters/pages/links.

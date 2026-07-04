@@ -42,6 +42,11 @@ export class MangaServer extends Container {
     CONNECTIONS_ENC_KEY: this.env.CONNECTIONS_ENC_KEY,
     // Browser CORS allowlist for the admin panel (comma-separated origins).
     CORS_ALLOW_ORIGINS: this.env.CORS_ALLOW_ORIGINS,
+    // Cloudflare Queue (UUID) backing the async cover-image mirror. Empty
+    // disables mirroring (covers stay their original URLs). The container
+    // produces/pull-consumes via the Queues REST API using CF_ACCOUNT_ID +
+    // CF_API_TOKEN (token needs Queues read+write).
+    COVER_QUEUE_ID: this.env.COVER_QUEUE_ID,
   };
 }
 

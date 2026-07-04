@@ -36,3 +36,12 @@ func TestMediaRepo_ChapterByID_NotFound(t *testing.T) {
 	_, err := repo.ChapterByID(context.Background(), "missing")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
+
+func TestMediaRepo_SetMediaCover(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("UPDATE media SET cover_url"),
+		"m1", "covers/m1.avif", mock.Anything).Return(nil)
+
+	require.NoError(t, repo.SetMediaCover(context.Background(), "m1", "covers/m1.avif"))
+}

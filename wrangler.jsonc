@@ -59,7 +59,12 @@
     "IOS_REDIRECT_URIS": "mihon://auth/callback",
     // Browser CORS allowlist (comma-separated origins) for the admin panel.
     // Handled at the edge in worker/index.ts; the Go server has no CORS/OPTIONS.
-    "CORS_ALLOW_ORIGINS": "https://griyamedia.brata.cloud,http://localhost:3000"
+    "CORS_ALLOW_ORIGINS": "https://griyamedia.brata.cloud,http://localhost:3000",
+    // Cloudflare Queue UUID for the async cover-image mirror (empty = disabled).
+    // Create with `wrangler queues create cover-mirror`, enable HTTP pull with
+    // `wrangler queues consumer http add cover-mirror`, then paste its id here.
+    // The container produces + pull-consumes via the Queues REST API.
+    "COVER_QUEUE_ID": ""
   },
 
   "observability": { "enabled": true }

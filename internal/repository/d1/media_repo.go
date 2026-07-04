@@ -384,6 +384,14 @@ func (r *MediaRepo) UpdateMedia(ctx context.Context, m domain.Media) error {
 	return r.syncAllTaxonomies(ctx, m)
 }
 
+// SetMediaCover rewrites only the cover_url column (the async cover mirror swaps
+// an external URL for the stored R2 key without touching taxonomies).
+func (r *MediaRepo) SetMediaCover(ctx context.Context, mediaID, coverURL string) error {
+	return r.db.Exec(ctx,
+		`UPDATE media SET cover_url=?2, updated_at=?3 WHERE id=?1`,
+		mediaID, coverURL, time.Now().Unix())
+}
+
 // DeleteMedia removes a media entry and everything hanging off it (chapters,
 // their pages, and all taxonomy links). Children are deleted explicitly rather
 // than relying on ON DELETE CASCADE, which requires PRAGMA foreign_keys=ON.

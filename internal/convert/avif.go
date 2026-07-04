@@ -58,6 +58,17 @@ func decodeAndEncode(raw []byte, idx int, opt EncodeOptions) (encodedPage, error
 	}, nil
 }
 
+// EncodeImage decodes a single raster image (JPEG/PNG/GIF/WebP/AVIF) and
+// re-encodes it to AVIF, downscaling to MaxEdge when set. It is the single-image
+// entry point used to mirror external cover images into R2 as AVIF.
+func EncodeImage(raw []byte, opt EncodeOptions) ([]byte, error) {
+	page, err := decodeAndEncode(raw, 0, opt)
+	if err != nil {
+		return nil, err
+	}
+	return page.Data, nil
+}
+
 // downscale returns a resized copy when the longest edge exceeds maxEdge.
 func downscale(src image.Image, maxEdge int) image.Image {
 	if maxEdge <= 0 {

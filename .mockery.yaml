@@ -20,6 +20,7 @@ packages:
       OAuthClient:
       StateStore:
       SourceRepository:
+      CoverMirrorQueue:
   github.com/triasbrata/mihon-manga-server/internal/handler:
     interfaces:
       MediaService:

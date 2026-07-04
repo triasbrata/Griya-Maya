@@ -22,7 +22,8 @@ func newMediaSvc(t *testing.T, baseURL string) (*service.MediaService, *mocks.Mo
 	t.Helper()
 	repo := mocks.NewMockMediaRepository(t)
 	store := mocks.NewMockObjectStore(t)
-	return service.NewMediaService(repo, store, baseURL, testPresignTTL), repo, store
+	cq := mocks.NewMockCoverMirrorQueue(t)
+	return service.NewMediaService(repo, store, cq, baseURL, testPresignTTL), repo, store
 }
 
 func TestMediaService_Popular_DelegatesToList(t *testing.T) {

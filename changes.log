@@ -402,3 +402,48 @@ for the required entry format.
   {service,handler,d1} (chapter_neighbors / chapter_by_id).
 - Tests: go build/vet/test ./... → 267 pass. Coverage service 88.4%, handler
   87.3%, d1 83.7% (all > 80%).
+
+## 2026-07-05 — Make adjacent-chapter endpoint public (match chapters-list gate)
+- What: Moved GET /v1/chapters/{id}/adjacent from the manga.read-gated `read`
+  group into the public `v1` catalog group in router.go, so it matches the auth
+  of the chapters-list route GET /v1/media/{id}/chapters. The endpoint returns
+  only chapter metadata (no R2 page bytes), so no read token is required.
+  - Updated swagger annotations: @Tags reader→catalog, dropped @Security
+    BearerAuth and the 401/403 @Failure lines; regenerated OpenAPI (make docs).
+  - Response/shape unchanged: {success,data:{previous,next}} with each side a
+    domain.Chapter or null; ordering still `ORDER BY number ASC` (media_repo.go).
+- Why: iOS consumes this as public chapter metadata; keep it consistent with the
+  chapters list it navigates alongside rather than gating it behind manga.read.
+- Files: internal/server/router.go, internal/handler/media_handler.go,
+  internal/server/swagger/* (regenerated).
+- Tests: go build/vet ./... clean; go test ./... → 267 pass. Coverage service
+  88.4%, handler 87.3%, d1 83.7%, domain 93.9% (all > 80%).
+
+## 2026-07-05 — Async cover-image mirror to R2 (AVIF) via Cloudflare Queue
+- What:
+  - On media create/update, an external cover URL is enqueued to a Cloudflare
+    Queue; a background consumer fetches it, AVIF-encodes it, uploads to R2 at
+    covers/<mediaId>.avif, and rewrites media.cover_url to that key. The create
+    call returns immediately with the original URL (mirror is async).
+  - On read, a stored cover that is an R2 key (no URL scheme) is presigned (like
+    pages) via a new resolveCover/resolveCovers; external URLs pass through. Update
+    preserves an already-mirrored cover when the client re-submits its presigned URL.
+  - New: convert.EncodeImage (single-image AVIF), internal/repository/queue (CF
+    Queues REST client: Send/Pull/Ack), internal/covermirror (Producer + background
+    Worker with FX lifecycle), domain.CoverMirrorJob, d1.MediaRepo.SetMediaCover,
+    service ports CoverMirrorQueue + MediaRepository.SetMediaCover.
+  - Config QUEUE (COVER_QUEUE_ID) + worker/index.ts + wrangler.jsonc passthrough;
+    mirror is disabled (covers stay original URLs) when COVER_QUEUE_ID is empty.
+- Why: self-host external cover images as compact AVIF in R2 instead of depending
+  on (and hotlinking) external hosts.
+- Files: internal/convert/avif.go, internal/repository/queue/*, internal/covermirror/*,
+  internal/domain/cover.go, internal/repository/d1/media_repo.go, internal/service/
+  media_service.go + ports.go, internal/app/module.go, internal/config/config.go,
+  .mockery.yaml + mocks, worker/index.ts, wrangler.jsonc, .env.example; tests in
+  service (cover_mirror_test) + d1 (SetMediaCover).
+- Tests: go build/vet/test ./... → 272 pass. Coverage service 87.6%, handler 87.3%,
+  d1 83.7% (all > 80%). queue + covermirror are infra (REST client / background
+  worker), covered by the service/d1 unit tests around them.
+- Ops: create the queue (`wrangler queues create cover-mirror`), enable HTTP pull
+  (`wrangler queues consumer http add cover-mirror`), ensure CF_API_TOKEN has Queues
+  read+write, set COVER_QUEUE_ID (env + wrangler var).

@@ -908,6 +908,54 @@ func (_c *MockMediaRepository_Search_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// SetMediaCover provides a mock function with given fields: ctx, mediaID, coverURL
+func (_m *MockMediaRepository) SetMediaCover(ctx context.Context, mediaID string, coverURL string) error {
+	ret := _m.Called(ctx, mediaID, coverURL)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetMediaCover")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, mediaID, coverURL)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaRepository_SetMediaCover_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetMediaCover'
+type MockMediaRepository_SetMediaCover_Call struct {
+	*mock.Call
+}
+
+// SetMediaCover is a helper method to define mock.On call
+//   - ctx context.Context
+//   - mediaID string
+//   - coverURL string
+func (_e *MockMediaRepository_Expecter) SetMediaCover(ctx interface{}, mediaID interface{}, coverURL interface{}) *MockMediaRepository_SetMediaCover_Call {
+	return &MockMediaRepository_SetMediaCover_Call{Call: _e.mock.On("SetMediaCover", ctx, mediaID, coverURL)}
+}
+
+func (_c *MockMediaRepository_SetMediaCover_Call) Run(run func(ctx context.Context, mediaID string, coverURL string)) *MockMediaRepository_SetMediaCover_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_SetMediaCover_Call) Return(_a0 error) *MockMediaRepository_SetMediaCover_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaRepository_SetMediaCover_Call) RunAndReturn(run func(context.Context, string, string) error) *MockMediaRepository_SetMediaCover_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateChapter provides a mock function with given fields: ctx, c
 func (_m *MockMediaRepository) UpdateChapter(ctx context.Context, c domain.Chapter) error {
 	ret := _m.Called(ctx, c)

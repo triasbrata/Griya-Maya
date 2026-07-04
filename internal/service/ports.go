@@ -31,6 +31,9 @@ type MediaRepository interface {
 	// Media writes.
 	CreateMedia(ctx context.Context, m domain.Media) error
 	UpdateMedia(ctx context.Context, m domain.Media) error
+	// SetMediaCover rewrites only cover_url (used by the async cover mirror to
+	// swap an external URL for the stored R2 key).
+	SetMediaCover(ctx context.Context, mediaID, coverURL string) error
 	DeleteMedia(ctx context.Context, id string) error
 
 	// Chapter writes.
@@ -51,6 +54,12 @@ type JobRepository interface {
 	UpdateStatus(ctx context.Context, id string, status domain.ConvertStatus, pageCount int, errMsg string) error
 	Get(ctx context.Context, id string) (domain.ConvertJob, error)
 	ReplacePages(ctx context.Context, chapterID string, pages []domain.StoredPage) error
+}
+
+// CoverMirrorQueue enqueues external cover images for async mirroring into R2
+// (implemented by a Cloudflare Queue producer; a no-op when the queue is off).
+type CoverMirrorQueue interface {
+	Enqueue(ctx context.Context, job domain.CoverMirrorJob) error
 }
 
 // SourceRepository persists content sources (implemented by d1.SourceRepo).

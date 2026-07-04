@@ -3,15 +3,19 @@
 package app
 
 import (
+	"context"
+
 	"go.uber.org/fx"
 
 	"github.com/triasbrata/mihon-manga-server/internal/config"
 	"github.com/triasbrata/mihon-manga-server/internal/convert"
+	"github.com/triasbrata/mihon-manga-server/internal/covermirror"
 	"github.com/triasbrata/mihon-manga-server/internal/handler"
 	"github.com/triasbrata/mihon-manga-server/internal/oidc"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/d1"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/kv"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/oauth"
+	"github.com/triasbrata/mihon-manga-server/internal/repository/queue"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/r2"
 	"github.com/triasbrata/mihon-manga-server/internal/server"
 	"github.com/triasbrata/mihon-manga-server/internal/service"
@@ -26,6 +30,7 @@ var Module = fx.Options(
 		func(c config.Config) config.D1Config { return c.D1 },
 		func(c config.Config) config.R2Config { return c.R2 },
 		func(c config.Config) config.KVConfig { return c.KV },
+		func(c config.Config) config.QueueConfig { return c.Queue },
 		func(c config.Config) config.OIDCConfig { return c.OIDC },
 		func(c config.Config) convert.EncodeOptions {
 			return convert.EncodeOptions{
@@ -40,6 +45,7 @@ var Module = fx.Options(
 	fx.Provide(
 		d1.New,
 		kv.New,
+		queue.New,
 	),
 
 	// Embedded OpenID Provider (D1 + KV backed).
@@ -50,16 +56,26 @@ var Module = fx.Options(
 		oidc.NewUserAdminHandler,
 	),
 
-	// Repositories bound to service ports.
+	// Repositories bound to service ports. MediaRepo and the R2 store are also
+	// bound to the covermirror ports (one instance, multiple interfaces).
 	fx.Provide(
-		fx.Annotate(d1.NewMediaRepo, fx.As(new(service.MediaRepository))),
+		fx.Annotate(d1.NewMediaRepo,
+			fx.As(new(service.MediaRepository)), fx.As(new(covermirror.CoverUpdater))),
 		fx.Annotate(d1.NewJobRepo, fx.As(new(service.JobRepository))),
 		fx.Annotate(d1.NewConnectionRepo, fx.As(new(service.ConnectionRepository))),
 		fx.Annotate(d1.NewSourceRepo, fx.As(new(service.SourceRepository))),
-		fx.Annotate(r2.New, fx.As(new(service.ObjectStore))),
+		fx.Annotate(r2.New,
+			fx.As(new(service.ObjectStore)), fx.As(new(covermirror.ObjectPutter))),
 		fx.Annotate(convert.NewConverter, fx.As(new(service.ArchiveConverter))),
 		fx.Annotate(oauth.NewClient, fx.As(new(service.OAuthClient))),
 		fx.Annotate(kv.NewStateStore, fx.As(new(service.StateStore))),
+	),
+
+	// Async cover mirror: producer bound to the media service's queue port, plus
+	// the background consumer whose lifecycle is registered below.
+	fx.Provide(
+		fx.Annotate(covermirror.NewProducer, fx.As(new(service.CoverMirrorQueue))),
+		covermirror.NewWorker,
 	),
 
 	// Services bound to the handler-layer ports.
@@ -88,11 +104,22 @@ var Module = fx.Options(
 	// HTTP server + lifecycle.
 	fx.Provide(server.New),
 	fx.Invoke(server.Register),
+	fx.Invoke(registerCoverMirror),
 )
 
-// newMediaService injects the public base URL and presign TTL from config.
-func newMediaService(repo service.MediaRepository, store service.ObjectStore, c config.Config) *service.MediaService {
-	return service.NewMediaService(repo, store, c.HTTP.PublicBaseURL, c.R2.PresignTTL)
+// newMediaService injects the public base URL, presign TTL, and cover-mirror
+// queue from config.
+func newMediaService(repo service.MediaRepository, store service.ObjectStore, coverQueue service.CoverMirrorQueue, c config.Config) *service.MediaService {
+	return service.NewMediaService(repo, store, coverQueue, c.HTTP.PublicBaseURL, c.R2.PresignTTL)
+}
+
+// registerCoverMirror starts/stops the background cover-mirror consumer with the
+// app lifecycle.
+func registerCoverMirror(lc fx.Lifecycle, w *covermirror.Worker) {
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error { w.Start(); return nil },
+		OnStop:  func(context.Context) error { w.Stop(); return nil },
+	})
 }
 
 // newVideoService injects the public base URL from config.

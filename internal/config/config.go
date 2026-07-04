@@ -22,6 +22,18 @@ type Config struct {
 	OIDC        OIDCConfig
 	Image       ImageConfig
 	Connections ConnectionsConfig
+	Queue       QueueConfig
+}
+
+// QueueConfig addresses a Cloudflare Queue via the REST API (push + http_pull
+// consume). It backs the async cover-image mirror. When QueueID is empty the
+// mirror is disabled and covers are stored as their original URLs.
+type QueueConfig struct {
+	AccountID string
+	// QueueID is the queue's UUID (from `wrangler queues list`), used in the REST
+	// path — NOT the queue name. From COVER_QUEUE_ID.
+	QueueID  string
+	APIToken string
 }
 
 // HTTPConfig controls the Hertz server.
@@ -140,6 +152,11 @@ func Load() (Config, error) {
 			AccountID:   os.Getenv("CF_ACCOUNT_ID"),
 			NamespaceID: os.Getenv("KV_NAMESPACE_ID"),
 			APIToken:    os.Getenv("CF_API_TOKEN"),
+		},
+		Queue: QueueConfig{
+			AccountID: os.Getenv("CF_ACCOUNT_ID"),
+			QueueID:   os.Getenv("COVER_QUEUE_ID"),
+			APIToken:  os.Getenv("CF_API_TOKEN"),
 		},
 		OIDC: OIDCConfig{
 			Issuer:          env("OIDC_ISSUER", env("PUBLIC_BASE_URL", "http://localhost:8080")),
