@@ -33,6 +33,7 @@ type RouterParams struct {
 	Config     config.Config
 	OIDC       *oidc.Provider
 	DCR        *oidc.DCRHandler
+	UserAdmin  *oidc.UserAdminHandler
 	Health     *handler.HealthHandler
 	Media      *handler.MediaHandler
 	Taxonomy   *handler.TaxonomyHandler
@@ -54,9 +55,12 @@ func New(p RouterParams) *server.Hertz {
 	// Worker), so the server answers preflights itself — Hertz routes OPTIONS
 	// through this global middleware, which aborts 204 with the allow headers.
 	h.Use(cors.New(cors.Config{
-		AllowOrigins:     p.Config.HTTP.CORSAllowOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type", "Origin"},
+		AllowOrigins: p.Config.HTTP.CORSAllowOrigins,
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Authorization", "Content-Type", "Origin"},
+		// Pagination metadata rides in response headers; expose them so the
+		// cross-origin admin panel can read them off list responses.
+		ExposeHeaders:    handler.PaginationHeaders,
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
@@ -158,6 +162,20 @@ func New(p RouterParams) *server.Hertz {
 		connections.POST("/connections/:id/authorize", p.Connection.Authorize)
 		connections.POST("/connections/callback", p.Connection.Callback)
 		connections.POST("/connections/:id/refresh", p.Connection.Refresh)
+	}
+
+	// Admin user management. Reads are gated by users.read, mutations by
+	// users.write, so a read-only admin role can be granted independently.
+	usersRead := h.Group("/v1/users", p.OIDC.MiddlewareScope(oidc.ScopeUsersRead))
+	{
+		usersRead.GET("", p.UserAdmin.List)
+		usersRead.GET("/:id", p.UserAdmin.Get)
+	}
+	usersWrite := h.Group("/v1/users", p.OIDC.MiddlewareScope(oidc.ScopeUsersWrite))
+	{
+		usersWrite.POST("", p.UserAdmin.Create)
+		usersWrite.PUT("/:id", p.UserAdmin.Update)
+		usersWrite.DELETE("/:id", p.UserAdmin.Delete)
 	}
 
 	// Conversion (protected by the OIDC access-token middleware).

@@ -13,25 +13,39 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
-// ErrorResponse is the uniform error body.
+// ErrorResponse documents the flat failure envelope for the swagger `@Failure`
+// annotations. The wire body is always a domain.APIResponse; see writeErr /
+// writeError below.
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+	ErrorCode string `json:"error_code"`
 }
 
-// writeError maps a domain error to an HTTP status + JSON body.
+// writeOK writes a typed success envelope: {"success":true,"data":<data>}.
+func writeOK[T any](c *app.RequestContext, status int, data T) {
+	c.JSON(status, domain.APIResponse[T]{Success: true, Data: data})
+}
+
+// writeErr writes a flat failure envelope:
+// {"success":false,"error_code":<code>,"message":<message>}.
+func writeErr(c *app.RequestContext, status int, code, message string) {
+	c.JSON(status, domain.APIResponse[any]{Success: false, ErrorCode: code, Message: message})
+}
+
+// writeError maps a domain error to an HTTP status + failure envelope.
 func writeError(c *app.RequestContext, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		c.JSON(consts.StatusNotFound, ErrorResponse{Error: "not_found", Message: err.Error()})
+		writeErr(c, consts.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, domain.ErrInvalidInput):
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 	case errors.Is(err, domain.ErrUnsupportedFormat):
-		c.JSON(consts.StatusUnsupportedMediaType, ErrorResponse{Error: "unsupported_format", Message: err.Error()})
+		writeErr(c, consts.StatusUnsupportedMediaType, "unsupported_format", err.Error())
 	case errors.Is(err, domain.ErrUnauthorized):
-		c.JSON(consts.StatusUnauthorized, ErrorResponse{Error: "unauthorized", Message: err.Error()})
+		writeErr(c, consts.StatusUnauthorized, "unauthorized", err.Error())
 	default:
-		c.JSON(consts.StatusInternalServerError, ErrorResponse{Error: "internal", Message: err.Error()})
+		writeErr(c, consts.StatusInternalServerError, "internal", err.Error())
 	}
 }
 

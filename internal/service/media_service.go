@@ -33,17 +33,17 @@ func NewMediaService(repo MediaRepository, store ObjectStore, publicBaseURL stri
 
 // Popular returns the most popular media for a source, honoring the filter.
 func (s *MediaService) Popular(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.List(ctx, sourceID, "popular", page, 30, filter)
+	return s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, filter)
 }
 
 // Latest returns the most recently updated media for a source, honoring the filter.
 func (s *MediaService) Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.List(ctx, sourceID, "latest", page, 30, filter)
+	return s.repo.List(ctx, sourceID, "latest", page, domain.CatalogPageSize, filter)
 }
 
 // Search matches titles within a source, honoring the filter.
 func (s *MediaService) Search(ctx context.Context, sourceID, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	return s.repo.Search(ctx, sourceID, query, page, 30, filter)
+	return s.repo.Search(ctx, sourceID, query, page, domain.CatalogPageSize, filter)
 }
 
 // Genres lists the distinct filterable genres seen across a source's catalog.

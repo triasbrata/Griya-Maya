@@ -39,7 +39,7 @@ func kindFromPath(seg string) (domain.TaxonomyKind, bool) {
 func (h *TaxonomyHandler) kind(c *app.RequestContext) (domain.TaxonomyKind, bool) {
 	kind, ok := kindFromPath(c.Param("kind"))
 	if !ok {
-		c.JSON(consts.StatusNotFound, ErrorResponse{Error: "not_found", Message: "unknown taxonomy kind"})
+		writeErr(c, consts.StatusNotFound, "not_found", "unknown taxonomy kind")
 	}
 	return kind, ok
 }
@@ -63,7 +63,7 @@ func (h *TaxonomyHandler) List(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Create godoc
@@ -85,7 +85,7 @@ func (h *TaxonomyHandler) Create(ctx context.Context, c *app.RequestContext) {
 	}
 	var req domain.TaxonomyWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Create(ctx, kind, req.Name)
@@ -93,7 +93,7 @@ func (h *TaxonomyHandler) Create(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusCreated, res)
+	writeOK(c, consts.StatusCreated, res)
 }
 
 // Update godoc
@@ -116,7 +116,7 @@ func (h *TaxonomyHandler) Update(ctx context.Context, c *app.RequestContext) {
 	}
 	var req domain.TaxonomyWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Update(ctx, kind, c.Param("id"), req.Name)
@@ -124,7 +124,7 @@ func (h *TaxonomyHandler) Update(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Delete godoc

@@ -22,6 +22,10 @@ const (
 	// ScopeConnectionsWrite gates the external-source OAuth connection routes
 	// (/v1/connections) independently of the catalog write scope.
 	ScopeConnectionsWrite = "connections.write"
+	// ScopeUsersRead gates reading the admin user directory (/v1/users GET).
+	ScopeUsersRead = "users.read"
+	// ScopeUsersWrite gates creating/updating/deleting admin users.
+	ScopeUsersWrite = "users.write"
 )
 
 // TaxonomyWriteKinds are the URL :kind path segments (plural) that each carry

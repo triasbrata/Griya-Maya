@@ -9,6 +9,8 @@ import (
 
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
+
+	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
 // claimsKey namespaces the verified access-token claims on the request context.
@@ -53,14 +55,24 @@ func (p *Provider) middleware(scopeFor func(*app.RequestContext) string) app.Han
 			unauthorized(c, "missing bearer token")
 			return
 		}
-		verifier := p.op.AccessTokenVerifier(ctx)
-		claims, err := op.VerifyAccessToken[*oidc.AccessTokenClaims](ctx, token, verifier)
+		// AccessTokenVerifier reads the expected issuer from the context
+		// (IssuerFromContext). Our Hertz middleware never passes through zitadel's
+		// IssuerInterceptor (which wraps only the OP's own HTTP handlers), so we
+		// inject the configured issuer here — otherwise the verifier expects an
+		// empty issuer and rejects every token ("issuer does not match").
+		vctx := op.ContextWithIssuer(ctx, p.issuer)
+		verifier := p.op.AccessTokenVerifier(vctx)
+		claims, err := op.VerifyAccessToken[*oidc.AccessTokenClaims](vctx, token, verifier)
 		if err != nil {
-			unauthorized(c, "invalid or expired token")
+			// Surface the concrete reason (expired, not-yet-valid, bad signature,
+			// issuer mismatch, unknown signing key, …) instead of a blanket
+			// "invalid or expired token" — a valid-looking token that fails here is
+			// almost always a signing-key rotation or issuer mismatch, not expiry.
+			unauthorized(c, "token verification failed: "+err.Error())
 			return
 		}
 		if scope := scopeFor(c); scope != "" && !hasScope(claims.Scopes, scope) {
-			forbidden(c, "insufficient scope")
+			forbidden(c, "insufficient scope: token needs '"+scope+"', has ["+strings.Join(claims.Scopes, " ")+"]")
 			return
 		}
 		c.Set(claimsKey, claims)
@@ -87,16 +99,18 @@ func hasScope(granted oidc.SpaceDelimitedArray, required string) bool {
 
 func unauthorized(c *app.RequestContext, reason string) {
 	c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
-	c.AbortWithStatusJSON(consts.StatusUnauthorized, map[string]string{
-		"error":             "unauthorized",
-		"error_description": reason,
+	c.AbortWithStatusJSON(consts.StatusUnauthorized, domain.APIResponse[any]{
+		Success:   false,
+		ErrorCode: "unauthorized",
+		Message:   reason,
 	})
 }
 
 func forbidden(c *app.RequestContext, reason string) {
 	c.Header("WWW-Authenticate", `Bearer error="insufficient_scope"`)
-	c.AbortWithStatusJSON(consts.StatusForbidden, map[string]string{
-		"error":             "forbidden",
-		"error_description": reason,
+	c.AbortWithStatusJSON(consts.StatusForbidden, domain.APIResponse[any]{
+		Success:   false,
+		ErrorCode: "forbidden",
+		Message:   reason,
 	})
 }

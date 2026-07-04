@@ -47,6 +47,7 @@ var Module = fx.Options(
 		oidc.NewStorage,
 		oidc.NewProvider,
 		oidc.NewDCRHandler,
+		oidc.NewUserAdminHandler,
 	),
 
 	// Repositories bound to service ports.

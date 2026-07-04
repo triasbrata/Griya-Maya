@@ -188,3 +188,48 @@ for the required entry format.
   205 pass. internal/oidc + internal/server are coverage-exempt infra.
 - Ops: existing admin-web D1 row won't be re-seeded — add the 4 new scopes and
   re-login (see message for SQL). Admin panel must request taksonomi.<kind>.write.
+
+## 2026-07-04 — Unified response envelope for all REST responses
+- What: every internal/handler response and the OIDC resource-server auth errors
+  now share one shape — success {"success":true,"data":<typed>}, error
+  {"success":false,"message":<msg>,"error_code":<code>}. Envelope is the generic
+  domain.APIResponse[T] with a flat message/error_code (no nested error object)
+  (internal/domain/response.go); generic handler helper writeOK[T] + writeErr +
+  refactored writeError (response.go); all handler c.JSON sites converted; oidc
+  middleware unauthorized/forbidden emit domain.APIResponse[any] (middleware.go).
+  handler.ErrorResponse is a flat doc struct for the swagger @Failure annotations.
+- Why: give clients (admin panel / iOS) a single, predictable response structure.
+- Scope note: the OAuth/OIDC protocol endpoints (/oauth/token, discovery, JWKS,
+  DCR) are intentionally NOT wrapped — they must keep their RFC-defined bodies.
+  204 No Content deletes keep an empty body (nothing to wrap).
+- Files: internal/domain/response.go, internal/handler/{response,connection,
+  convert,media,taxonomy,video,novel,health}_handler.go, internal/handler/
+  helpers_test.go + media_handler_test.go, internal/oidc/middleware.go
+- Tests: go build ./... + go vet ./internal/... clean; gofmt clean; go test ./...
+  → 205 pass. Verified wire shape: success {"success":true,"data":{...}},
+  error {"success":false,"error":{"code":...,"message":...}}.
+- Follow-up (not done): swagger @Success/@Failure annotations still describe the
+  inner types, not the envelope — regenerate/rewrite in a later pass.
+
+## 2026-07-05 — Pagination metadata in response headers (offset + cursor)
+- What: pagination data now rides in response headers instead of only the body.
+  New domain.Pagination (offset|cursor) with OffsetPagination/CursorPagination
+  constructors + domain.CatalogPageSize (internal/domain/pagination.go). New
+  handler.writePagination emits X-Pagination-Kind / -Has-Next / -Per-Page /
+  -Page / -Total / -Next-Cursor / -Prev-Cursor, and queryCursor parses the
+  cursor param (internal/handler/pagination.go). Wired into the offset-paginated
+  catalog list endpoints (popular/latest/search). Cursor strategy is fully
+  supported by the helper (constructor + header branch + query parser), ready to
+  wire when a cursor endpoint lands.
+- Why: requested — pagination should be readable from headers and support either
+  skip/offset or cursor pagination via one helper.
+- CORS: handler.PaginationHeaders added to the cors ExposeHeaders (router.go) so
+  the cross-origin admin panel can read the headers.
+- Files: internal/domain/pagination.go (new), internal/handler/pagination.go
+  (new), internal/handler/media_handler.go, internal/service/media_service.go
+  (30 -> domain.CatalogPageSize), internal/server/router.go,
+  internal/handler/internal_test.go (writePagination + queryCursor tests).
+- Tests: go build ./... + go vet ./internal/... clean; gofmt clean; go test ./...
+  → 210 pass; internal/handler coverage 88.2% (>80% gate). Verified live: a
+  Popular response carries X-Pagination-Kind:offset, -Page:2, -Per-Page:30,
+  -Has-Next:true, and omits -Total when unknown.

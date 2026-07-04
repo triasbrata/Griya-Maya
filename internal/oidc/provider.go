@@ -19,6 +19,7 @@ type Provider struct {
 	storage       *Storage
 	handler       http.Handler
 	requiredScope string
+	issuer        string
 }
 
 // NewProvider constructs the OpenID Provider over the given storage.
@@ -29,7 +30,7 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 	supportedScopes := []string{
 		oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
 		oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
-		ScopeConnectionsWrite,
+		ScopeConnectionsWrite, ScopeUsersRead, ScopeUsersWrite,
 	}
 	for _, k := range TaxonomyWriteKinds {
 		supportedScopes = append(supportedScopes, ScopeTaxonomyWrite(k))
@@ -80,6 +81,7 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 		storage:       storage,
 		handler:       mux,
 		requiredScope: cfg.RequiredScope,
+		issuer:        cfg.Issuer,
 	}, nil
 }
 

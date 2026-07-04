@@ -32,7 +32,7 @@ func seedAdminClient(ctx context.Context, d1c *d1.Client, cfg config.OIDCConfig)
 	scopes := []string{
 		oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail,
 		oidc.ScopeOfflineAccess, ScopeMangaWrite, ScopeMangaRead,
-		ScopeConnectionsWrite,
+		ScopeConnectionsWrite, ScopeUsersRead, ScopeUsersWrite,
 	}
 	// Per-kind taxonomy write scopes (taksonomi.<kind>.write) so the admin panel
 	// can manage every taxonomy kind; reads are covered by manga.read above.

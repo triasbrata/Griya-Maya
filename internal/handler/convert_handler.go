@@ -42,7 +42,7 @@ type UploadResponse struct {
 func (h *ConvertHandler) Upload(ctx context.Context, c *app.RequestContext) {
 	fh, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "multipart field 'file' is required"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "multipart field 'file' is required")
 		return
 	}
 	f, err := fh.Open()
@@ -66,7 +66,7 @@ func (h *ConvertHandler) Upload(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusCreated, UploadResponse{SourceKey: key})
+	writeOK(c, consts.StatusCreated, UploadResponse{SourceKey: key})
 }
 
 // Convert godoc
@@ -83,7 +83,7 @@ func (h *ConvertHandler) Upload(ctx context.Context, c *app.RequestContext) {
 func (h *ConvertHandler) Convert(ctx context.Context, c *app.RequestContext) {
 	var req domain.ConvertRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Convert(ctx, req)
@@ -91,7 +91,7 @@ func (h *ConvertHandler) Convert(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // JobStatus godoc
@@ -109,5 +109,5 @@ func (h *ConvertHandler) JobStatus(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, job)
+	writeOK(c, consts.StatusOK, job)
 }

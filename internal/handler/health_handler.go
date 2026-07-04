@@ -20,5 +20,5 @@ func NewHealthHandler() *HealthHandler { return &HealthHandler{} }
 // @Success  200 {object} map[string]string
 // @Router   /healthz [get]
 func (h *HealthHandler) Health(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
+	writeOK(c, consts.StatusOK, map[string]string{"status": "ok"})
 }

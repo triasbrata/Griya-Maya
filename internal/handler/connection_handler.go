@@ -50,7 +50,7 @@ type callbackRequest struct {
 func (h *ConnectionHandler) Create(ctx context.Context, c *app.RequestContext) {
 	var req domain.ConnectionWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Create(ctx, req)
@@ -58,7 +58,7 @@ func (h *ConnectionHandler) Create(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusCreated, res)
+	writeOK(c, consts.StatusCreated, res)
 }
 
 // List godoc
@@ -74,7 +74,7 @@ func (h *ConnectionHandler) List(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Get godoc
@@ -92,7 +92,7 @@ func (h *ConnectionHandler) Get(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Update godoc
@@ -110,7 +110,7 @@ func (h *ConnectionHandler) Get(ctx context.Context, c *app.RequestContext) {
 func (h *ConnectionHandler) Update(ctx context.Context, c *app.RequestContext) {
 	var req domain.ConnectionWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Update(ctx, c.Param("id"), req)
@@ -118,7 +118,7 @@ func (h *ConnectionHandler) Update(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Delete godoc
@@ -152,7 +152,7 @@ func (h *ConnectionHandler) Delete(ctx context.Context, c *app.RequestContext) {
 func (h *ConnectionHandler) Authorize(ctx context.Context, c *app.RequestContext) {
 	var req authorizeRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	url, err := h.svc.Authorize(ctx, c.Param("id"), req.RedirectURI)
@@ -160,7 +160,7 @@ func (h *ConnectionHandler) Authorize(ctx context.Context, c *app.RequestContext
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, authorizeResponse{AuthorizeURL: url})
+	writeOK(c, consts.StatusOK, authorizeResponse{AuthorizeURL: url})
 }
 
 // Callback godoc
@@ -177,7 +177,7 @@ func (h *ConnectionHandler) Authorize(ctx context.Context, c *app.RequestContext
 func (h *ConnectionHandler) Callback(ctx context.Context, c *app.RequestContext) {
 	var req callbackRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.Callback(ctx, req.Code, req.State)
@@ -185,7 +185,7 @@ func (h *ConnectionHandler) Callback(ctx context.Context, c *app.RequestContext)
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Refresh godoc
@@ -204,5 +204,5 @@ func (h *ConnectionHandler) Refresh(ctx context.Context, c *app.RequestContext) 
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }

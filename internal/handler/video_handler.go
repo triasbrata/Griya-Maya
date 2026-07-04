@@ -49,7 +49,7 @@ type VideoUploadResponse struct {
 func (h *VideoHandler) Upload(ctx context.Context, c *app.RequestContext) {
 	form, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "multipart/form-data body is required"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "multipart/form-data body is required")
 		return
 	}
 
@@ -58,7 +58,7 @@ func (h *VideoHandler) Upload(ctx context.Context, c *app.RequestContext) {
 		files = form.File["file"]
 	}
 	if len(files) == 0 {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "at least one 'files' part is required"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "at least one 'files' part is required")
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *VideoHandler) Upload(ctx context.Context, c *app.RequestContext) {
 	for _, fh := range files {
 		name := filepath.Base(fh.Filename)
 		if name == "" || name == "." || name == "/" {
-			c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "a file part has an empty filename"})
+			writeErr(c, consts.StatusBadRequest, "invalid_input", "a file part has an empty filename")
 			return
 		}
 		f, err := fh.Open()
@@ -107,11 +107,11 @@ func (h *VideoHandler) Upload(ctx context.Context, c *app.RequestContext) {
 	}
 
 	if playlistKey == "" {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "no .m3u8 playlist found among the uploaded files"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "no .m3u8 playlist found among the uploaded files")
 		return
 	}
 
-	c.JSON(consts.StatusCreated, VideoUploadResponse{Prefix: prefix, PlaylistKey: playlistKey, Keys: keys})
+	writeOK(c, consts.StatusCreated, VideoUploadResponse{Prefix: prefix, PlaylistKey: playlistKey, Keys: keys})
 }
 
 // Register godoc
@@ -127,7 +127,7 @@ func (h *VideoHandler) Upload(ctx context.Context, c *app.RequestContext) {
 func (h *VideoHandler) Register(ctx context.Context, c *app.RequestContext) {
 	var req domain.VideoRegisterRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	page, err := h.svc.Register(ctx, req)
@@ -135,7 +135,7 @@ func (h *VideoHandler) Register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, page)
+	writeOK(c, consts.StatusOK, page)
 }
 
 // Stream godoc
@@ -150,7 +150,7 @@ func (h *VideoHandler) Register(ctx context.Context, c *app.RequestContext) {
 func (h *VideoHandler) Stream(ctx context.Context, c *app.RequestContext) {
 	key := strings.TrimLeft(c.Param("key"), "/")
 	if key == "" {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "key is required"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "key is required")
 		return
 	}
 

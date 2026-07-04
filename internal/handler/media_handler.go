@@ -43,7 +43,8 @@ func (h *MediaHandler) Popular(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writePagination(c, domain.OffsetPagination(res.Page, domain.CatalogPageSize, -1, res.HasNext))
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Latest godoc
@@ -68,7 +69,8 @@ func (h *MediaHandler) Latest(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writePagination(c, domain.OffsetPagination(res.Page, domain.CatalogPageSize, -1, res.HasNext))
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Search godoc
@@ -94,7 +96,8 @@ func (h *MediaHandler) Search(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writePagination(c, domain.OffsetPagination(res.Page, domain.CatalogPageSize, -1, res.HasNext))
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Genres godoc
@@ -110,7 +113,7 @@ func (h *MediaHandler) Genres(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Categories godoc
@@ -126,7 +129,7 @@ func (h *MediaHandler) Categories(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Details godoc
@@ -143,7 +146,7 @@ func (h *MediaHandler) Details(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Chapters godoc
@@ -159,7 +162,7 @@ func (h *MediaHandler) Chapters(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // Pages godoc
@@ -179,7 +182,7 @@ func (h *MediaHandler) Pages(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // CreateMedia godoc
@@ -195,7 +198,7 @@ func (h *MediaHandler) Pages(ctx context.Context, c *app.RequestContext) {
 func (h *MediaHandler) CreateMedia(ctx context.Context, c *app.RequestContext) {
 	var req domain.MediaWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.CreateMedia(ctx, req)
@@ -203,7 +206,7 @@ func (h *MediaHandler) CreateMedia(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusCreated, res)
+	writeOK(c, consts.StatusCreated, res)
 }
 
 // UpdateMedia godoc
@@ -220,7 +223,7 @@ func (h *MediaHandler) CreateMedia(ctx context.Context, c *app.RequestContext) {
 func (h *MediaHandler) UpdateMedia(ctx context.Context, c *app.RequestContext) {
 	var req domain.MediaWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.UpdateMedia(ctx, c.Param("id"), req)
@@ -228,7 +231,7 @@ func (h *MediaHandler) UpdateMedia(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // DeleteMedia godoc
@@ -261,7 +264,7 @@ func (h *MediaHandler) DeleteMedia(ctx context.Context, c *app.RequestContext) {
 func (h *MediaHandler) CreateChapter(ctx context.Context, c *app.RequestContext) {
 	var req domain.ChapterWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	// The path media id is authoritative.
@@ -271,7 +274,7 @@ func (h *MediaHandler) CreateChapter(ctx context.Context, c *app.RequestContext)
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusCreated, res)
+	writeOK(c, consts.StatusCreated, res)
 }
 
 // UpdateChapter godoc
@@ -288,7 +291,7 @@ func (h *MediaHandler) CreateChapter(ctx context.Context, c *app.RequestContext)
 func (h *MediaHandler) UpdateChapter(ctx context.Context, c *app.RequestContext) {
 	var req domain.ChapterWriteRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	res, err := h.svc.UpdateChapter(ctx, c.Param("id"), req)
@@ -296,7 +299,7 @@ func (h *MediaHandler) UpdateChapter(ctx context.Context, c *app.RequestContext)
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, res)
+	writeOK(c, consts.StatusOK, res)
 }
 
 // DeleteChapter godoc
@@ -329,7 +332,7 @@ func (h *MediaHandler) DeleteChapter(ctx context.Context, c *app.RequestContext)
 func (h *MediaHandler) Image(ctx context.Context, c *app.RequestContext) {
 	key := c.Query("key")
 	if key == "" {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: "key is required"})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "key is required")
 		return
 	}
 	data, contentType, err := h.store.Get(ctx, key)

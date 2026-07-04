@@ -119,9 +119,7 @@ func TestMediaHandler_Details_NotFound(t *testing.T) {
 	h.Details(context.Background(), c)
 
 	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
-	var body handler.ErrorResponse
-	decodeJSON(t, c, &body)
-	assert.Equal(t, "not_found", body.Error)
+	assert.Equal(t, "not_found", decodeError(t, c).ErrorCode)
 }
 
 func TestMediaHandler_Chapters(t *testing.T) {

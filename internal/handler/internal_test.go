@@ -12,11 +12,11 @@ import (
 
 func TestParseByteRange(t *testing.T) {
 	cases := []struct {
-		name              string
-		header            string
-		size              int
+		name               string
+		header             string
+		size               int
 		wantStart, wantEnd int
-		wantOK            bool
+		wantOK             bool
 	}{
 		{"absent", "", 100, 0, 0, false},
 		{"empty size", "bytes=0-10", 0, 0, 0, false},
@@ -118,3 +118,46 @@ func TestWriteError_StatusMapping(t *testing.T) {
 type assertAnError struct{}
 
 func (assertAnError) Error() string { return "boom" }
+
+func TestWritePagination(t *testing.T) {
+	hdr := func(c *app.RequestContext, k string) string { return string(c.Response.Header.Get(k)) }
+
+	t.Run("offset omits unknown total", func(t *testing.T) {
+		c := app.NewContext(0)
+		writePagination(c, domain.OffsetPagination(2, 30, -1, true))
+		assert.Equal(t, "offset", hdr(c, HdrPaginationKind))
+		assert.Equal(t, "true", hdr(c, HdrPaginationHasNext))
+		assert.Equal(t, "2", hdr(c, HdrPaginationPage))
+		assert.Equal(t, "30", hdr(c, HdrPaginationPerPage))
+		assert.Empty(t, hdr(c, HdrPaginationTotal))
+		assert.Empty(t, hdr(c, HdrPaginationNextCursor))
+	})
+
+	t.Run("offset with total", func(t *testing.T) {
+		c := app.NewContext(0)
+		writePagination(c, domain.OffsetPagination(1, 30, 57, false))
+		assert.Equal(t, "57", hdr(c, HdrPaginationTotal))
+		assert.Equal(t, "false", hdr(c, HdrPaginationHasNext))
+	})
+
+	t.Run("cursor omits empty prev and offset fields", func(t *testing.T) {
+		c := app.NewContext(0)
+		writePagination(c, domain.CursorPagination(20, "next123", "", true))
+		assert.Equal(t, "cursor", hdr(c, HdrPaginationKind))
+		assert.Equal(t, "20", hdr(c, HdrPaginationPerPage))
+		assert.Equal(t, "next123", hdr(c, HdrPaginationNextCursor))
+		assert.Empty(t, hdr(c, HdrPaginationPrevCursor))
+		assert.Empty(t, hdr(c, HdrPaginationPage))
+		assert.Empty(t, hdr(c, HdrPaginationTotal))
+	})
+}
+
+func TestQueryCursor(t *testing.T) {
+	c := app.NewContext(0)
+	c.Request.SetRequestURI("/v1/x?cursor=abc123")
+	assert.Equal(t, "abc123", queryCursor(c))
+
+	empty := app.NewContext(0)
+	empty.Request.SetRequestURI("/v1/x")
+	assert.Empty(t, queryCursor(empty))
+}

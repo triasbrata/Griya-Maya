@@ -35,7 +35,7 @@ func NewNovelHandler(svc NovelService) *NovelHandler {
 func (h *NovelHandler) Register(ctx context.Context, c *app.RequestContext) {
 	var req domain.NovelRegisterRequest
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, ErrorResponse{Error: "invalid_input", Message: err.Error()})
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
 		return
 	}
 	page, err := h.svc.Register(ctx, req)
@@ -43,5 +43,5 @@ func (h *NovelHandler) Register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(consts.StatusOK, page)
+	writeOK(c, consts.StatusOK, page)
 }
