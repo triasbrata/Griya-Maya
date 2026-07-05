@@ -208,15 +208,12 @@ func (h *MediaHandler) Pages(ctx context.Context, c *app.RequestContext) {
 
 // ChapterNeighbors godoc
 // @Summary  Previous/next chapter around a chapter
-// @Description Returns the chapters immediately before and after this one within its media (by chapter number); either side is null at the ends. Requires a manga.read access token.
-// @Tags     reader
+// @Description Returns the chapters immediately before and after this one within its media (by chapter number); either side is null at the ends. Public read (metadata only, no page bytes) — matches the chapters-list gate.
+// @Tags     catalog
 // @Produce  json
 // @Param    id path string true "Chapter ID"
 // @Success  200 {object} domain.ChapterNeighbors
-// @Failure  401 {object} handler.ErrorResponse
-// @Failure  403 {object} handler.ErrorResponse
 // @Failure  404 {object} handler.ErrorResponse
-// @Security BearerAuth
 // @Router   /v1/chapters/{id}/adjacent [get]
 func (h *MediaHandler) ChapterNeighbors(ctx context.Context, c *app.RequestContext) {
 	res, err := h.svc.ChapterNeighbors(ctx, c.Param("id"))

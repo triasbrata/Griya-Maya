@@ -55,6 +55,7 @@ type TaxonomyService interface {
 // (implemented by *service.ConvertService).
 type ConvertService interface {
 	Convert(ctx context.Context, req domain.ConvertRequest) (service.ConvertResult, error)
+	Probe(ctx context.Context, req domain.ConvertRequest) (service.ProbeResult, error)
 	Job(ctx context.Context, id string) (domain.ConvertJob, error)
 }
 

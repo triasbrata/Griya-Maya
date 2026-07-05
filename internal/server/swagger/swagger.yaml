@@ -136,9 +136,27 @@ components:
             OutputPrefix is the R2 key prefix under which page-NNNN.avif are written.
             Defaults to "pages/<jobID>/".
           type: string
+        segments:
+          description: |-
+            Segments, when non-empty, splits the single archive into multiple chapters:
+            each segment's page range (1-based, inclusive) is assigned to its chapter.
+            Takes precedence over the top-level ChapterID for page association.
+          items:
+            $ref: '#/components/schemas/domain.ConvertSegment'
+          type: array
+          uniqueItems: false
         sourceKey:
           description: SourceKey is the R2 object key of the CBZ/EPUB/PDF to convert.
           type: string
+      type: object
+    domain.ConvertSegment:
+      properties:
+        chapterId:
+          type: string
+        endPage:
+          type: integer
+        startPage:
+          type: integer
       type: object
     domain.ConvertStatus:
       type: string
@@ -580,6 +598,18 @@ components:
           type: array
           uniqueItems: false
       type: object
+    service.ProbeResult:
+      properties:
+        format:
+          description: Format overrides format detection when set.
+          type: string
+          x-enum-varnames:
+          - FormatCBZ
+          - FormatEPUB
+          - FormatPDF
+        pageCount:
+          type: integer
+      type: object
   securitySchemes:
     BearerAuth:
       description: RFC 7592 registration_access_token. Use "Bearer <token>".
@@ -947,8 +977,8 @@ paths:
   /v1/chapters/{id}/adjacent:
     get:
       description: Returns the chapters immediately before and after this one within
-        its media (by chapter number); either side is null at the ends. Requires a
-        manga.read access token.
+        its media (by chapter number); either side is null at the ends. Public read
+        (metadata only, no page bytes) — matches the chapters-list gate.
       parameters:
       - description: Chapter ID
         in: path
@@ -963,29 +993,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/domain.ChapterNeighbors'
           description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Forbidden
         "404":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/handler.ErrorResponse'
           description: Not Found
-      security:
-      - BearerAuth: []
       summary: Previous/next chapter around a chapter
       tags:
-      - reader
+      - catalog
   /v1/chapters/{id}/pages:
     get:
       description: Returns short-lived presigned R2 URLs the client fetches directly.
@@ -1379,6 +1395,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a conversion job's status.
+      tags:
+      - convert
+  /v1/convert/probe:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.ConvertRequest'
+        description: Probe request (sourceKey required; format optional)
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/service.ProbeResult'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unsupported Media Type
+      security:
+      - BearerAuth: []
+      summary: Count the ordered pages of an uploaded archive without encoding.
       tags:
       - convert
   /v1/convert/upload:

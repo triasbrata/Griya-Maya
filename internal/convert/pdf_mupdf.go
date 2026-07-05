@@ -48,3 +48,18 @@ func (pdfExtractor) Extract(archive []byte) ([]rawPage, error) {
 	}
 	return pages, nil
 }
+
+// PageCount returns the PDF page count without rendering any page.
+func (pdfExtractor) PageCount(archive []byte) (int, error) {
+	doc, err := fitz.NewFromMemory(archive)
+	if err != nil {
+		return 0, fmt.Errorf("%w: open pdf: %v", domain.ErrInvalidInput, err)
+	}
+	defer doc.Close()
+
+	n := doc.NumPage()
+	if n == 0 {
+		return 0, fmt.Errorf("%w: pdf has no pages", domain.ErrInvalidInput)
+	}
+	return n, nil
+}

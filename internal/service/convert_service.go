@@ -32,6 +32,40 @@ type ConvertResult struct {
 	Pages []domain.Page     `json:"pages"`
 }
 
+// ProbeResult reports how many ordered pages an uploaded archive has without
+// encoding them.
+type ProbeResult struct {
+	Format    domain.ArchiveFormat `json:"format"`
+	PageCount int                  `json:"pageCount"`
+}
+
+// Probe returns the ordered page count of an already-uploaded archive without
+// encoding any page to AVIF.
+func (s *ConvertService) Probe(ctx context.Context, req domain.ConvertRequest) (ProbeResult, error) {
+	if strings.TrimSpace(req.SourceKey) == "" {
+		return ProbeResult{}, fmt.Errorf("%w: sourceKey is required", domain.ErrInvalidInput)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	archive, _, err := s.store.Get(ctx, req.SourceKey)
+	if err != nil {
+		return ProbeResult{}, fmt.Errorf("fetch source: %w", err)
+	}
+
+	format, err := convert.DetectFormat(req.Format, req.SourceKey, archive)
+	if err != nil {
+		return ProbeResult{}, err
+	}
+
+	n, err := s.converter.PageCount(ctx, format, archive)
+	if err != nil {
+		return ProbeResult{}, err
+	}
+	return ProbeResult{Format: format, PageCount: n}, nil
+}
+
 // Convert runs the full pipeline synchronously and returns the finished job.
 // A container is long-lived, so synchronous processing (bounded by timeout) is
 // the simplest correct model; swap in a queue consumer for very large batches.
@@ -63,7 +97,7 @@ func (s *ConvertService) Convert(ctx context.Context, req domain.ConvertRequest)
 		return ConvertResult{}, err
 	}
 
-	pages, err := s.run(ctx, &job)
+	pages, err := s.run(ctx, &job, req.Segments)
 	if err != nil {
 		_ = s.jobs.UpdateStatus(ctx, job.ID, domain.ConvertFailed, len(pages), err.Error())
 		job.Status = domain.ConvertFailed
@@ -82,7 +116,7 @@ func (s *ConvertService) Job(ctx context.Context, id string) (domain.ConvertJob,
 	return s.jobs.Get(ctx, id)
 }
 
-func (s *ConvertService) run(ctx context.Context, job *domain.ConvertJob) ([]domain.Page, error) {
+func (s *ConvertService) run(ctx context.Context, job *domain.ConvertJob, segments []domain.ConvertSegment) ([]domain.Page, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
@@ -120,13 +154,47 @@ func (s *ConvertService) run(ctx context.Context, job *domain.ConvertJob) ([]dom
 		})
 	}
 
-	// Associate produced pages with a chapter when requested.
-	if job.ChapterID != "" {
+	// Split the single archive across multiple chapters by page range when
+	// segments are given; otherwise associate all pages with the top-level
+	// chapter (the pre-segment behavior).
+	if len(segments) > 0 {
+		if err := s.assignSegments(ctx, stored, segments); err != nil {
+			return pages, err
+		}
+	} else if job.ChapterID != "" {
 		if err := s.jobs.ReplacePages(ctx, job.ChapterID, stored); err != nil {
 			return nil, fmt.Errorf("persist pages: %w", err)
 		}
 	}
 	return pages, nil
+}
+
+// assignSegments validates each segment's 1-based inclusive page range against
+// the extracted pages, then for each chapter stores its slice with 0-based
+// re-indexed StoredPage.Index (R2Key/Width/Height preserved).
+func (s *ConvertService) assignSegments(ctx context.Context, stored []domain.StoredPage, segments []domain.ConvertSegment) error {
+	total := len(stored)
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.ChapterID) == "" {
+			return fmt.Errorf("%w: segment chapterId is required", domain.ErrInvalidInput)
+		}
+		if seg.StartPage < 1 || seg.StartPage > seg.EndPage || seg.EndPage > total {
+			return fmt.Errorf("%w: segment page range [%d,%d] out of bounds for %d pages", domain.ErrInvalidInput, seg.StartPage, seg.EndPage, total)
+		}
+	}
+
+	for _, seg := range segments {
+		src := stored[seg.StartPage-1 : seg.EndPage]
+		slice := make([]domain.StoredPage, len(src))
+		for i, p := range src {
+			p.Index = i
+			slice[i] = p
+		}
+		if err := s.jobs.ReplacePages(ctx, seg.ChapterID, slice); err != nil {
+			return fmt.Errorf("persist pages: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *ConvertService) publicOrProxy(key string) string {

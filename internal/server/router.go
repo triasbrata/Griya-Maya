@@ -107,6 +107,9 @@ func New(p RouterParams) *server.Hertz {
 		v1.GET("/sources/:sourceId/categories", p.Media.Categories)
 		v1.GET("/media/:id", p.Media.Details)
 		v1.GET("/media/:id/chapters", p.Media.Chapters)
+		// Previous/next chapter around a chapter — metadata only (no R2 page
+		// bytes), so it shares the public catalog gate with the chapters list.
+		v1.GET("/chapters/:id/adjacent", p.Media.ChapterNeighbors)
 		// HLS streaming proxy (public read): path-based so a playlist's relative
 		// segment URIs resolve. Used when no public R2 domain is configured.
 		v1.GET("/stream/*key", p.Video.Stream)
@@ -120,7 +123,6 @@ func New(p RouterParams) *server.Hertz {
 	read := h.Group("/v1", p.OIDC.MiddlewareScope(oidc.ScopeMangaRead))
 	{
 		read.GET("/chapters/:id/pages", p.Media.Pages)
-		read.GET("/chapters/:id/adjacent", p.Media.ChapterNeighbors)
 		read.GET("/image", p.Media.Image)
 
 		// Taxonomy reads share the reader scope: listing genres/categories/
@@ -204,6 +206,7 @@ func New(p RouterParams) *server.Hertz {
 	{
 		secured.POST("/upload", p.Convert.Upload)
 		secured.POST("", p.Convert.Convert)
+		secured.POST("/probe", p.Convert.Probe)
 		secured.GET("/jobs/:id", p.Convert.JobStatus)
 	}
 

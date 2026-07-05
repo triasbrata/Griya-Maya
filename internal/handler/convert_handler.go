@@ -94,6 +94,31 @@ func (h *ConvertHandler) Convert(ctx context.Context, c *app.RequestContext) {
 	writeOK(c, consts.StatusOK, res)
 }
 
+// Probe godoc
+// @Summary  Count the ordered pages of an uploaded archive without encoding.
+// @Tags     convert
+// @Accept   json
+// @Produce  json
+// @Param    request body domain.ConvertRequest true "Probe request (sourceKey required; format optional)"
+// @Success  200 {object} service.ProbeResult
+// @Failure  400 {object} handler.ErrorResponse
+// @Failure  415 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/convert/probe [post]
+func (h *ConvertHandler) Probe(ctx context.Context, c *app.RequestContext) {
+	var req domain.ConvertRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+	res, err := h.svc.Probe(ctx, req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writeOK(c, consts.StatusOK, res)
+}
+
 // JobStatus godoc
 // @Summary  Get a conversion job's status.
 // @Tags     convert

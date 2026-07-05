@@ -86,6 +86,7 @@ type ObjectStore interface {
 // ArchiveConverter turns an archive into AVIF pages (implemented by convert.Converter).
 type ArchiveConverter interface {
 	Convert(ctx context.Context, format domain.ArchiveFormat, archive []byte) ([]convert.Result, error)
+	PageCount(ctx context.Context, format domain.ArchiveFormat, archive []byte) (int, error)
 }
 
 // ConnectionRepository persists external-source OAuth connections (implemented

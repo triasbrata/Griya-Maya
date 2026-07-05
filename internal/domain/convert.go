@@ -37,6 +37,18 @@ type ConvertRequest struct {
 	// MediaID / ChapterID associate the produced pages with catalog rows.
 	MediaID   string `json:"mediaId,omitempty"`
 	ChapterID string `json:"chapterId,omitempty"`
+	// Segments, when non-empty, splits the single archive into multiple chapters:
+	// each segment's page range (1-based, inclusive) is assigned to its chapter.
+	// Takes precedence over the top-level ChapterID for page association.
+	Segments []ConvertSegment `json:"segments,omitempty"`
+}
+
+// ConvertSegment maps a contiguous page range of the source archive to a chapter.
+// StartPage/EndPage are 1-based and inclusive.
+type ConvertSegment struct {
+	ChapterID string `json:"chapterId"`
+	StartPage int    `json:"startPage"`
+	EndPage   int    `json:"endPage"`
 }
 
 // ConvertJob is the persisted state of a conversion.

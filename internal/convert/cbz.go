@@ -40,3 +40,23 @@ func (cbzExtractor) Extract(archive []byte) ([]rawPage, error) {
 	sortPagesNaturally(pages)
 	return pages, nil
 }
+
+// PageCount counts image entries in the CBZ without reading their bytes.
+func (cbzExtractor) PageCount(archive []byte) (int, error) {
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return 0, fmt.Errorf("%w: open cbz: %v", domain.ErrInvalidInput, err)
+	}
+
+	n := 0
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() || !isImageName(f.Name) {
+			continue
+		}
+		n++
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("%w: cbz has no images", domain.ErrInvalidInput)
+	}
+	return n, nil
+}

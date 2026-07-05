@@ -84,6 +84,64 @@ func (_c *MockArchiveConverter_Convert_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// PageCount provides a mock function with given fields: ctx, format, archive
+func (_m *MockArchiveConverter) PageCount(ctx context.Context, format domain.ArchiveFormat, archive []byte) (int, error) {
+	ret := _m.Called(ctx, format, archive)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PageCount")
+	}
+
+	var r0 int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, domain.ArchiveFormat, []byte) (int, error)); ok {
+		return rf(ctx, format, archive)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, domain.ArchiveFormat, []byte) int); ok {
+		r0 = rf(ctx, format, archive)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, domain.ArchiveFormat, []byte) error); ok {
+		r1 = rf(ctx, format, archive)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockArchiveConverter_PageCount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PageCount'
+type MockArchiveConverter_PageCount_Call struct {
+	*mock.Call
+}
+
+// PageCount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - format domain.ArchiveFormat
+//   - archive []byte
+func (_e *MockArchiveConverter_Expecter) PageCount(ctx interface{}, format interface{}, archive interface{}) *MockArchiveConverter_PageCount_Call {
+	return &MockArchiveConverter_PageCount_Call{Call: _e.mock.On("PageCount", ctx, format, archive)}
+}
+
+func (_c *MockArchiveConverter_PageCount_Call) Run(run func(ctx context.Context, format domain.ArchiveFormat, archive []byte)) *MockArchiveConverter_PageCount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(domain.ArchiveFormat), args[2].([]byte))
+	})
+	return _c
+}
+
+func (_c *MockArchiveConverter_PageCount_Call) Return(_a0 int, _a1 error) *MockArchiveConverter_PageCount_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockArchiveConverter_PageCount_Call) RunAndReturn(run func(context.Context, domain.ArchiveFormat, []byte) (int, error)) *MockArchiveConverter_PageCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewMockArchiveConverter creates a new instance of MockArchiveConverter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockArchiveConverter(t interface {
