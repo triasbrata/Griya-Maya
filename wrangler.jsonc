@@ -61,10 +61,9 @@
     // Handled at the edge in worker/index.ts; the Go server has no CORS/OPTIONS.
     "CORS_ALLOW_ORIGINS": "https://griyamedia.brata.cloud,http://localhost:3000",
     // Cloudflare Queue UUID for the async cover-image mirror (empty = disabled).
-    // Create with `wrangler queues create cover-mirror`, enable HTTP pull with
-    // `wrangler queues consumer http add cover-mirror`, then paste its id here.
-    // The container produces + pull-consumes via the Queues REST API.
-    "COVER_QUEUE_ID": ""
+    // Queue "cover-mirror" (http_pull consumer). The container produces +
+    // pull-consumes via the Queues REST API using CF_ACCOUNT_ID + CF_API_TOKEN.
+    "COVER_QUEUE_ID": "71cff4a21653480a99a59255c74399c3"
   },
 
   "observability": { "enabled": true }
