@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -351,6 +353,89 @@ func (h *MediaHandler) UpdateChapter(ctx context.Context, c *app.RequestContext)
 // @Router   /v1/chapters/{id} [delete]
 func (h *MediaHandler) DeleteChapter(ctx context.Context, c *app.RequestContext) {
 	if err := h.svc.DeleteChapter(ctx, c.Param("id")); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(consts.StatusNoContent)
+}
+
+// deleteChaptersRequest is the batch-delete payload: a list of chapter ids (one
+// entry is a single delete). Unknown ids are ignored (idempotent).
+type deleteChaptersRequest struct {
+	IDs []string `json:"ids"`
+}
+
+// DeleteChapters godoc
+// @Summary  Delete one or more chapters (and their pages) in one call.
+// @Description Batch-capable chapter delete. Accepts an array of ids of any length (a single-element array is a single delete). Deleted pages' R2 artifacts are cleaned up asynchronously. Unknown ids are ignored.
+// @Tags     media
+// @Accept   json
+// @Param    request body handler.deleteChaptersRequest true "Chapter ids"
+// @Success  204
+// @Failure  400 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/chapters/delete [post]
+func (h *MediaHandler) DeleteChapters(ctx context.Context, c *app.RequestContext) {
+	var req deleteChaptersRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+	ids := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "ids is required")
+		return
+	}
+	if err := h.svc.DeleteChapters(ctx, ids); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(consts.StatusNoContent)
+}
+
+// AdminChapterPages godoc
+// @Summary  List a chapter's pages with raw R2 keys (admin).
+// @Description Admin-only page listing that exposes each page's raw r2Key alongside a short-lived presigned imageUrl, so an operator can inspect and delete individual artifacts. Requires admin.read.
+// @Tags     admin
+// @Produce  json
+// @Param    id path string true "Chapter ID"
+// @Success  200 {array} domain.AdminPage
+// @Failure  401 {object} handler.ErrorResponse
+// @Failure  403 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/admin/chapters/{id}/pages [get]
+func (h *MediaHandler) AdminChapterPages(ctx context.Context, c *app.RequestContext) {
+	res, err := h.svc.ChapterPagesAdmin(ctx, c.Param("id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writeOK(c, consts.StatusOK, res)
+}
+
+// AdminDeleteChapterPage godoc
+// @Summary  Delete a single chapter page and its artifact (admin).
+// @Description Removes one page (by index) from a chapter and schedules its R2 object for async cleanup. Requires admin.write.
+// @Tags     admin
+// @Param    id  path string true "Chapter ID"
+// @Param    idx path int    true "Page index"
+// @Success  204
+// @Failure  400 {object} handler.ErrorResponse
+// @Failure  404 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/admin/chapters/{id}/pages/{idx} [delete]
+func (h *MediaHandler) AdminDeleteChapterPage(ctx context.Context, c *app.RequestContext) {
+	idx, err := strconv.Atoi(c.Param("idx"))
+	if err != nil {
+		writeErr(c, consts.StatusBadRequest, "invalid_input", "idx must be an integer")
+		return
+	}
+	if err := h.svc.DeleteChapterPage(ctx, c.Param("id"), idx); err != nil {
 		writeError(c, err)
 		return
 	}

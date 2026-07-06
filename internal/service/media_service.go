@@ -17,18 +17,22 @@ type MediaService struct {
 	repo          MediaRepository
 	store         ObjectStore
 	coverQueue    CoverMirrorQueue
+	cleanupQueue  CleanupQueue
 	publicBaseURL string
 	presignTTL    time.Duration
 }
 
 // NewMediaService wires a MediaService. presignTTL bounds how long the direct
 // R2 page URLs it mints stay valid. coverQueue enqueues external cover images
-// for async mirroring into R2 (a no-op producer when the queue is unconfigured).
-func NewMediaService(repo MediaRepository, store ObjectStore, coverQueue CoverMirrorQueue, publicBaseURL string, presignTTL time.Duration) *MediaService {
+// for async mirroring into R2; cleanupQueue enqueues orphaned R2 keys for async
+// deletion on chapter/page/media removal (both no-op producers when their queue
+// is unconfigured).
+func NewMediaService(repo MediaRepository, store ObjectStore, coverQueue CoverMirrorQueue, cleanupQueue CleanupQueue, publicBaseURL string, presignTTL time.Duration) *MediaService {
 	return &MediaService{
 		repo:          repo,
 		store:         store,
 		coverQueue:    coverQueue,
+		cleanupQueue:  cleanupQueue,
 		publicBaseURL: strings.TrimRight(publicBaseURL, "/"),
 		presignTTL:    presignTTL,
 	}
@@ -66,6 +70,16 @@ func (s *MediaService) enqueueCoverMirror(ctx context.Context, mediaID, cover st
 		return
 	}
 	_ = s.coverQueue.Enqueue(ctx, domain.CoverMirrorJob{MediaID: mediaID, SourceURL: cover})
+}
+
+// enqueueCleanup schedules orphaned R2 object keys for async deletion after
+// their rows have been removed (best-effort: a failed enqueue never fails the
+// delete — the keys simply stay in R2 until a future cleanup).
+func (s *MediaService) enqueueCleanup(ctx context.Context, keys []string) {
+	if s.cleanupQueue == nil || len(keys) == 0 {
+		return
+	}
+	_ = s.cleanupQueue.Enqueue(ctx, keys)
 }
 
 // Popular returns the most popular media for a source, honoring the filter.
@@ -262,12 +276,29 @@ func (s *MediaService) UpdateMedia(ctx context.Context, id string, req domain.Me
 	return s.resolveCover(ctx, saved), nil
 }
 
-// DeleteMedia removes a media entry and its chapters/pages/links.
+// DeleteMedia removes a media entry and its chapters/pages/links, then schedules
+// the orphaned R2 artifacts (all its pages plus a mirrored cover) for async
+// cleanup. Keys are collected before the rows are deleted; the cleanup job is
+// enqueued only after the delete succeeds.
 func (s *MediaService) DeleteMedia(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("%w: id is required", domain.ErrInvalidInput)
 	}
-	return s.repo.DeleteMedia(ctx, id)
+	keys, err := s.repo.PageKeysForMedia(ctx, id)
+	if err != nil {
+		return err
+	}
+	// A mirrored cover is stored as an R2 key (external URLs are left as-is and
+	// carry nothing of ours to delete). Best-effort: a missing media just yields
+	// no cover key.
+	if m, err := s.repo.Get(ctx, id); err == nil && isMirroredCover(m.CoverURL) {
+		keys = append(keys, m.CoverURL)
+	}
+	if err := s.repo.DeleteMedia(ctx, id); err != nil {
+		return err
+	}
+	s.enqueueCleanup(ctx, keys)
+	return nil
 }
 
 // mediaFromRequest validates a write request and builds a domain.Media (id set
@@ -345,12 +376,99 @@ func (s *MediaService) UpdateChapter(ctx context.Context, id string, req domain.
 	return c, nil
 }
 
-// DeleteChapter removes a chapter and its pages.
+// DeleteChapter removes a chapter and its pages, scheduling the pages' R2
+// artifacts for cleanup. It delegates to DeleteChapters so single and batch
+// deletes share one path.
 func (s *MediaService) DeleteChapter(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("%w: id is required", domain.ErrInvalidInput)
 	}
-	return s.repo.DeleteChapter(ctx, id)
+	return s.DeleteChapters(ctx, []string{id})
+}
+
+// DeleteChapters removes one or more chapters (and their pages), then schedules
+// every collected R2 page key for async cleanup as a single job. For each id it
+// reads the page keys, deletes the rows, and only after all rows are gone
+// enqueues the cleanup — so a failed delete never schedules a live object for
+// deletion. Blank ids are skipped and unknown ids are no-ops (idempotent).
+func (s *MediaService) DeleteChapters(ctx context.Context, ids []string) error {
+	var keys []string
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		pages, err := s.repo.Pages(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := s.repo.DeleteChapter(ctx, id); err != nil {
+			return err
+		}
+		for _, p := range pages {
+			if p.R2Key != "" {
+				keys = append(keys, p.R2Key)
+			}
+		}
+	}
+	s.enqueueCleanup(ctx, keys)
+	return nil
+}
+
+// ChapterPagesAdmin returns a chapter's pages with their raw R2 keys and a
+// short-lived presigned fetch URL — the admin-only view used to inspect and
+// delete individual artifacts. Unlike the reader's Pages, it exposes r2Key.
+func (s *MediaService) ChapterPagesAdmin(ctx context.Context, chapterID string) ([]domain.AdminPage, error) {
+	stored, err := s.repo.Pages(ctx, chapterID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.AdminPage, 0, len(stored))
+	for _, sp := range stored {
+		url, err := s.pageURL(ctx, sp.R2Key)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.AdminPage{
+			Index:    sp.Index,
+			R2Key:    sp.R2Key,
+			ImageURL: url,
+			Width:    sp.Width,
+			Height:   sp.Height,
+			Kind:     sp.Kind,
+		})
+	}
+	return out, nil
+}
+
+// DeleteChapterPage removes a single page (by index) from a chapter and
+// schedules its R2 artifact for cleanup. The page must exist (else
+// domain.ErrNotFound); its key is read before the row is deleted.
+func (s *MediaService) DeleteChapterPage(ctx context.Context, chapterID string, idx int) error {
+	if strings.TrimSpace(chapterID) == "" {
+		return fmt.Errorf("%w: chapter id is required", domain.ErrInvalidInput)
+	}
+	pages, err := s.repo.Pages(ctx, chapterID)
+	if err != nil {
+		return err
+	}
+	key, found := "", false
+	for _, p := range pages {
+		if p.Index == idx {
+			key, found = p.R2Key, true
+			break
+		}
+	}
+	if !found {
+		return domain.ErrNotFound
+	}
+	if err := s.repo.DeletePage(ctx, chapterID, idx); err != nil {
+		return err
+	}
+	if key != "" {
+		s.enqueueCleanup(ctx, []string{key})
+	}
+	return nil
 }
 
 func chapterFromRequest(id string, req domain.ChapterWriteRequest) (domain.Chapter, error) {

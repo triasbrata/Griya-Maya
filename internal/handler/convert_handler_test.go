@@ -1,9 +1,7 @@
 package handler_test
 
 import (
-	"bytes"
 	"context"
-	"mime/multipart"
 	"testing"
 
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -15,115 +13,77 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/handler"
 	"github.com/triasbrata/mihon-manga-server/internal/handler/mocks"
 	"github.com/triasbrata/mihon-manga-server/internal/service"
-	svcmocks "github.com/triasbrata/mihon-manga-server/internal/service/mocks"
 )
 
-// multipartFile builds a multipart/form-data body with one file part plus extra
-// text fields, returning the body and its content type.
-func multipartFile(t *testing.T, field, filename string, data []byte, fields map[string]string) ([]byte, string) {
-	t.Helper()
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	fw, err := w.CreateFormFile(field, filename)
-	require.NoError(t, err)
-	_, err = fw.Write(data)
-	require.NoError(t, err)
-	for k, v := range fields {
-		require.NoError(t, w.WriteField(k, v))
-	}
-	require.NoError(t, w.Close())
-	return buf.Bytes(), w.FormDataContentType()
-}
-
-func TestConvertHandler_Upload_StoresAndReturnsKey(t *testing.T) {
+func TestConvertHandler_Presign_OK(t *testing.T) {
 	svc := mocks.NewMockConvertService(t)
-	store := svcmocks.NewMockObjectStore(t)
-	h := handler.NewConvertHandler(svc, store)
+	h := handler.NewConvertHandler(svc)
 
-	body, ct := multipartFile(t, "file", "book.cbz", []byte("PKarchive"), map[string]string{"key": "uploads/book.cbz"})
-	store.EXPECT().Put(mock.Anything, "uploads/book.cbz", []byte("PKarchive"), "application/octet-stream").Return(nil)
+	want := service.PresignResult{
+		Prefix: "pages/abc/",
+		Items:  []service.PresignItem{{Key: "pages/abc/page-0000.avif", URL: "https://r2/put"}},
+	}
+	svc.EXPECT().PresignUploads(mock.Anything, 1, "").Return(want, nil)
 
-	c := newCtx("POST", "/v1/convert/upload", nil, body, ct)
-	h.Upload(context.Background(), c)
+	c := newCtx("POST", "/v1/convert/presign", nil, []byte(`{"count":1}`), "application/json")
+	h.Presign(context.Background(), c)
 
-	assert.Equal(t, consts.StatusCreated, c.Response.StatusCode())
-	var out handler.UploadResponse
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var out service.PresignResult
 	decodeJSON(t, c, &out)
-	assert.Equal(t, "uploads/book.cbz", out.SourceKey)
+	assert.Equal(t, "pages/abc/", out.Prefix)
+	assert.Len(t, out.Items, 1)
 }
 
-func TestConvertHandler_Upload_MissingFile(t *testing.T) {
-	h := handler.NewConvertHandler(mocks.NewMockConvertService(t), svcmocks.NewMockObjectStore(t))
-
-	c := newCtx("POST", "/v1/convert/upload", nil, []byte("not-multipart"), "application/json")
-	h.Upload(context.Background(), c)
+func TestConvertHandler_Presign_BadJSON(t *testing.T) {
+	h := handler.NewConvertHandler(mocks.NewMockConvertService(t))
+	c := newCtx("POST", "/v1/convert/presign", nil, []byte(`{bad`), "application/json")
+	h.Presign(context.Background(), c)
 	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
 }
 
-func TestConvertHandler_Convert_OK(t *testing.T) {
+func TestConvertHandler_Presign_ServiceError(t *testing.T) {
 	svc := mocks.NewMockConvertService(t)
-	h := handler.NewConvertHandler(svc, svcmocks.NewMockObjectStore(t))
+	h := handler.NewConvertHandler(svc)
+	svc.EXPECT().PresignUploads(mock.Anything, 0, "").Return(service.PresignResult{}, domain.ErrInvalidInput)
 
-	req := domain.ConvertRequest{SourceKey: "uploads/a.cbz", ChapterID: "ch1"}
-	result := service.ConvertResult{
-		Job:   domain.ConvertJob{ID: "j1", Status: domain.ConvertDone, PageCount: 2},
-		Pages: []domain.Page{{Index: 0}, {Index: 1}},
-	}
-	svc.EXPECT().Convert(mock.Anything, req).Return(result, nil)
-
-	c := newCtx("POST", "/v1/convert", nil, []byte(`{"sourceKey":"uploads/a.cbz","chapterId":"ch1"}`), "application/json")
-	h.Convert(context.Background(), c)
-
-	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
-	var out service.ConvertResult
-	decodeJSON(t, c, &out)
-	assert.Equal(t, "j1", out.Job.ID)
-	assert.Len(t, out.Pages, 2)
-}
-
-func TestConvertHandler_Convert_BadJSON(t *testing.T) {
-	h := handler.NewConvertHandler(mocks.NewMockConvertService(t), svcmocks.NewMockObjectStore(t))
-
-	c := newCtx("POST", "/v1/convert", nil, []byte(`{not json`), "application/json")
-	h.Convert(context.Background(), c)
+	c := newCtx("POST", "/v1/convert/presign", nil, []byte(`{"count":0}`), "application/json")
+	h.Presign(context.Background(), c)
 	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
 }
 
-func TestConvertHandler_Convert_ServiceError(t *testing.T) {
+func TestConvertHandler_RegisterPages_OK(t *testing.T) {
 	svc := mocks.NewMockConvertService(t)
-	h := handler.NewConvertHandler(svc, svcmocks.NewMockObjectStore(t))
+	h := handler.NewConvertHandler(svc)
 
-	svc.EXPECT().Convert(mock.Anything, mock.Anything).
-		Return(service.ConvertResult{}, domain.ErrUnsupportedFormat)
+	svc.EXPECT().RegisterPages(mock.Anything, "ch1", []domain.StoredPage{
+		{Index: 0, R2Key: "pages/x/page-0000.avif", Width: 800, Height: 1200},
+	}).Return([]domain.Page{{Index: 0, ImageURL: "/v1/image?key=pages/x/page-0000.avif", Width: 800, Height: 1200}}, nil)
 
-	c := newCtx("POST", "/v1/convert", nil, []byte(`{"sourceKey":"x"}`), "application/json")
-	h.Convert(context.Background(), c)
-	assert.Equal(t, consts.StatusUnsupportedMediaType, c.Response.StatusCode())
-}
-
-func TestConvertHandler_JobStatus(t *testing.T) {
-	svc := mocks.NewMockConvertService(t)
-	h := handler.NewConvertHandler(svc, svcmocks.NewMockObjectStore(t))
-
-	svc.EXPECT().Job(mock.Anything, "j1").
-		Return(domain.ConvertJob{ID: "j1", Status: domain.ConvertRunning}, nil)
-
-	c := newCtx("GET", "/v1/convert/jobs/j1", map[string]string{"id": "j1"}, nil, "")
-	h.JobStatus(context.Background(), c)
+	body := []byte(`{"pages":[{"index":0,"r2Key":"pages/x/page-0000.avif","width":800,"height":1200}]}`)
+	c := newCtx("POST", "/v1/chapters/ch1/pages", map[string]string{"id": "ch1"}, body, "application/json")
+	h.RegisterPages(context.Background(), c)
 
 	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
-	var out domain.ConvertJob
+	var out []domain.Page
 	decodeJSON(t, c, &out)
-	assert.Equal(t, domain.ConvertRunning, out.Status)
+	require.Len(t, out, 1)
+	assert.Equal(t, "/v1/image?key=pages/x/page-0000.avif", out[0].ImageURL)
 }
 
-func TestConvertHandler_JobStatus_NotFound(t *testing.T) {
+func TestConvertHandler_RegisterPages_BadJSON(t *testing.T) {
+	h := handler.NewConvertHandler(mocks.NewMockConvertService(t))
+	c := newCtx("POST", "/v1/chapters/ch1/pages", map[string]string{"id": "ch1"}, []byte(`{bad`), "application/json")
+	h.RegisterPages(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+}
+
+func TestConvertHandler_RegisterPages_ServiceError(t *testing.T) {
 	svc := mocks.NewMockConvertService(t)
-	h := handler.NewConvertHandler(svc, svcmocks.NewMockObjectStore(t))
+	h := handler.NewConvertHandler(svc)
+	svc.EXPECT().RegisterPages(mock.Anything, "ch1", mock.Anything).Return(nil, domain.ErrInvalidInput)
 
-	svc.EXPECT().Job(mock.Anything, "missing").Return(domain.ConvertJob{}, domain.ErrNotFound)
-
-	c := newCtx("GET", "/v1/convert/jobs/missing", map[string]string{"id": "missing"}, nil, "")
-	h.JobStatus(context.Background(), c)
-	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
+	c := newCtx("POST", "/v1/chapters/ch1/pages", map[string]string{"id": "ch1"}, []byte(`{"pages":[]}`), "application/json")
+	h.RegisterPages(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
 }

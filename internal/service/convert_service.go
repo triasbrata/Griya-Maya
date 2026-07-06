@@ -8,193 +8,93 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/triasbrata/mihon-manga-server/internal/convert"
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
-// ConvertService orchestrates archive -> AVIF conversion: pull from R2, convert,
-// push AVIF pages back to R2, and record the job + pages in D1.
+// ConvertService serves the browser-side ingest flow: it mints presigned R2 PUT
+// URLs so the browser can upload AVIF pages directly, then registers those
+// uploaded pages onto a chapter. Encoding itself happens in the browser.
 type ConvertService struct {
-	jobs      JobRepository
-	store     ObjectStore
-	converter ArchiveConverter
-	timeout   time.Duration
+	jobs  JobRepository
+	store ObjectStore
 }
 
 // NewConvertService wires a ConvertService.
-func NewConvertService(jobs JobRepository, store ObjectStore, converter ArchiveConverter, timeout time.Duration) *ConvertService {
-	return &ConvertService{jobs: jobs, store: store, converter: converter, timeout: timeout}
+func NewConvertService(jobs JobRepository, store ObjectStore) *ConvertService {
+	return &ConvertService{jobs: jobs, store: store}
 }
 
-// ConvertResult is returned once conversion completes.
-type ConvertResult struct {
-	Job   domain.ConvertJob `json:"job"`
-	Pages []domain.Page     `json:"pages"`
+// presignPutTTL bounds how long a minted direct-upload URL stays valid.
+const presignPutTTL = 30 * time.Minute
+
+// maxPresignBatch caps how many upload URLs a single presign request may mint.
+const maxPresignBatch = 5000
+
+// PresignItem is one page's target R2 key plus the presigned PUT URL the client
+// uploads its AVIF bytes to.
+type PresignItem struct {
+	Key string `json:"key"`
+	URL string `json:"url"`
 }
 
-// ProbeResult reports how many ordered pages an uploaded archive has without
-// encoding them.
-type ProbeResult struct {
-	Format    domain.ArchiveFormat `json:"format"`
-	PageCount int                  `json:"pageCount"`
+// PresignResult is the batch of upload targets returned to the browser: one
+// fresh prefix and `count` ordered items (page-0000.avif … page-NNNN.avif).
+type PresignResult struct {
+	Prefix string        `json:"prefix"`
+	Items  []PresignItem `json:"items"`
 }
 
-// Probe returns the ordered page count of an already-uploaded archive without
-// encoding any page to AVIF.
-func (s *ConvertService) Probe(ctx context.Context, req domain.ConvertRequest) (ProbeResult, error) {
-	if strings.TrimSpace(req.SourceKey) == "" {
-		return ProbeResult{}, fmt.Errorf("%w: sourceKey is required", domain.ErrInvalidInput)
+// PresignUploads mints `count` presigned PUT URLs under one fresh prefix so the
+// browser can encode AVIF pages and upload them straight to R2. contentType
+// defaults to "image/avif" when empty.
+func (s *ConvertService) PresignUploads(ctx context.Context, count int, contentType string) (PresignResult, error) {
+	if count < 1 || count > maxPresignBatch {
+		return PresignResult{}, fmt.Errorf("%w: count must be between 1 and %d", domain.ErrInvalidInput, maxPresignBatch)
+	}
+	if contentType == "" {
+		contentType = "image/avif"
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-
-	archive, _, err := s.store.Get(ctx, req.SourceKey)
-	if err != nil {
-		return ProbeResult{}, fmt.Errorf("fetch source: %w", err)
-	}
-
-	format, err := convert.DetectFormat(req.Format, req.SourceKey, archive)
-	if err != nil {
-		return ProbeResult{}, err
-	}
-
-	n, err := s.converter.PageCount(ctx, format, archive)
-	if err != nil {
-		return ProbeResult{}, err
-	}
-	return ProbeResult{Format: format, PageCount: n}, nil
-}
-
-// Convert runs the full pipeline synchronously and returns the finished job.
-// A container is long-lived, so synchronous processing (bounded by timeout) is
-// the simplest correct model; swap in a queue consumer for very large batches.
-func (s *ConvertService) Convert(ctx context.Context, req domain.ConvertRequest) (ConvertResult, error) {
-	if strings.TrimSpace(req.SourceKey) == "" {
-		return ConvertResult{}, fmt.Errorf("%w: sourceKey is required", domain.ErrInvalidInput)
-	}
-
-	now := time.Now().UTC()
-	job := domain.ConvertJob{
-		ID:           uuid.NewString(),
-		SourceKey:    req.SourceKey,
-		Format:       req.Format,
-		OutputPrefix: req.OutputPrefix,
-		MediaID:      req.MediaID,
-		ChapterID:    req.ChapterID,
-		Status:       domain.ConvertPending,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if job.OutputPrefix == "" {
-		job.OutputPrefix = "pages/" + job.ID + "/"
-	}
-	if !strings.HasSuffix(job.OutputPrefix, "/") {
-		job.OutputPrefix += "/"
-	}
-
-	if err := s.jobs.Create(ctx, job); err != nil {
-		return ConvertResult{}, err
-	}
-
-	pages, err := s.run(ctx, &job, req.Segments)
-	if err != nil {
-		_ = s.jobs.UpdateStatus(ctx, job.ID, domain.ConvertFailed, len(pages), err.Error())
-		job.Status = domain.ConvertFailed
-		job.Error = err.Error()
-		return ConvertResult{Job: job}, err
-	}
-
-	job.Status = domain.ConvertDone
-	job.PageCount = len(pages)
-	_ = s.jobs.UpdateStatus(ctx, job.ID, domain.ConvertDone, len(pages), "")
-	return ConvertResult{Job: job, Pages: pages}, nil
-}
-
-// Job returns a previously-created job.
-func (s *ConvertService) Job(ctx context.Context, id string) (domain.ConvertJob, error) {
-	return s.jobs.Get(ctx, id)
-}
-
-func (s *ConvertService) run(ctx context.Context, job *domain.ConvertJob, segments []domain.ConvertSegment) ([]domain.Page, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-
-	_ = s.jobs.UpdateStatus(ctx, job.ID, domain.ConvertRunning, 0, "")
-
-	archive, _, err := s.store.Get(ctx, job.SourceKey)
-	if err != nil {
-		return nil, fmt.Errorf("fetch source: %w", err)
-	}
-
-	format, err := convert.DetectFormat(job.Format, job.SourceKey, archive)
-	if err != nil {
-		return nil, err
-	}
-	job.Format = format
-
-	results, err := s.converter.Convert(ctx, format, archive)
-	if err != nil {
-		return nil, err
-	}
-
-	pages := make([]domain.Page, 0, len(results))
-	stored := make([]domain.StoredPage, 0, len(results))
-	for _, r := range results {
-		key := fmt.Sprintf("%spage-%04d.avif", job.OutputPrefix, r.Index)
-		if err := s.store.Put(ctx, key, r.Data, "image/avif"); err != nil {
-			return nil, fmt.Errorf("upload page %d: %w", r.Index, err)
+	prefix := "pages/" + uuid.NewString() + "/"
+	items := make([]PresignItem, 0, count)
+	for i := 0; i < count; i++ {
+		key := fmt.Sprintf("%spage-%04d.avif", prefix, i)
+		url, err := s.store.PresignPut(ctx, key, presignPutTTL, contentType)
+		if err != nil {
+			return PresignResult{}, fmt.Errorf("presign upload %d: %w", i, err)
 		}
-		stored = append(stored, domain.StoredPage{Index: r.Index, R2Key: key, Width: r.Width, Height: r.Height})
-		pages = append(pages, domain.Page{
-			Index:    r.Index,
-			ImageURL: s.publicOrProxy(key),
-			Width:    r.Width,
-			Height:   r.Height,
+		items = append(items, PresignItem{Key: key, URL: url})
+	}
+	return PresignResult{Prefix: prefix, Items: items}, nil
+}
+
+// RegisterPages replaces a chapter's page rows with pages the browser already
+// encoded and uploaded to R2 (via PresignUploads). It persists the stored pages
+// and returns them as readable domain.Page with resolved image URLs.
+func (s *ConvertService) RegisterPages(ctx context.Context, chapterID string, pages []domain.StoredPage) ([]domain.Page, error) {
+	if len(pages) == 0 {
+		return nil, fmt.Errorf("%w: pages is required", domain.ErrInvalidInput)
+	}
+	for i, p := range pages {
+		if strings.TrimSpace(p.R2Key) == "" {
+			return nil, fmt.Errorf("%w: page %d is missing r2Key", domain.ErrInvalidInput, i)
+		}
+	}
+
+	if err := s.jobs.ReplacePages(ctx, chapterID, pages); err != nil {
+		return nil, fmt.Errorf("persist pages: %w", err)
+	}
+
+	out := make([]domain.Page, 0, len(pages))
+	for _, p := range pages {
+		out = append(out, domain.Page{
+			Index:    p.Index,
+			ImageURL: s.publicOrProxy(p.R2Key),
+			Width:    p.Width,
+			Height:   p.Height,
 		})
 	}
-
-	// Split the single archive across multiple chapters by page range when
-	// segments are given; otherwise associate all pages with the top-level
-	// chapter (the pre-segment behavior).
-	if len(segments) > 0 {
-		if err := s.assignSegments(ctx, stored, segments); err != nil {
-			return pages, err
-		}
-	} else if job.ChapterID != "" {
-		if err := s.jobs.ReplacePages(ctx, job.ChapterID, stored); err != nil {
-			return nil, fmt.Errorf("persist pages: %w", err)
-		}
-	}
-	return pages, nil
-}
-
-// assignSegments validates each segment's 1-based inclusive page range against
-// the extracted pages, then for each chapter stores its slice with 0-based
-// re-indexed StoredPage.Index (R2Key/Width/Height preserved).
-func (s *ConvertService) assignSegments(ctx context.Context, stored []domain.StoredPage, segments []domain.ConvertSegment) error {
-	total := len(stored)
-	for _, seg := range segments {
-		if strings.TrimSpace(seg.ChapterID) == "" {
-			return fmt.Errorf("%w: segment chapterId is required", domain.ErrInvalidInput)
-		}
-		if seg.StartPage < 1 || seg.StartPage > seg.EndPage || seg.EndPage > total {
-			return fmt.Errorf("%w: segment page range [%d,%d] out of bounds for %d pages", domain.ErrInvalidInput, seg.StartPage, seg.EndPage, total)
-		}
-	}
-
-	for _, seg := range segments {
-		src := stored[seg.StartPage-1 : seg.EndPage]
-		slice := make([]domain.StoredPage, len(src))
-		for i, p := range src {
-			p.Index = i
-			slice[i] = p
-		}
-		if err := s.jobs.ReplacePages(ctx, seg.ChapterID, slice); err != nil {
-			return fmt.Errorf("persist pages: %w", err)
-		}
-	}
-	return nil
+	return out, nil
 }
 
 func (s *ConvertService) publicOrProxy(key string) string {

@@ -7,7 +7,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/triasbrata/mihon-manga-server/internal/convert"
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
@@ -40,6 +39,12 @@ type MediaRepository interface {
 	CreateChapter(ctx context.Context, c domain.Chapter) error
 	UpdateChapter(ctx context.Context, c domain.Chapter) error
 	DeleteChapter(ctx context.Context, id string) error
+	// DeletePage removes a single page row (chapter_id + idx). The caller reads
+	// the page's R2 key first so it can schedule the artifact for cleanup.
+	DeletePage(ctx context.Context, chapterID string, idx int) error
+	// PageKeysForMedia returns every stored R2 key across all of a media entry's
+	// chapters, used to schedule R2 cleanup on media deletion.
+	PageKeysForMedia(ctx context.Context, mediaID string) ([]string, error)
 
 	// Taxonomy management (genre/category/author/artist).
 	ListTaxonomy(ctx context.Context, kind domain.TaxonomyKind) ([]domain.Taxonomy, error)
@@ -48,11 +53,10 @@ type MediaRepository interface {
 	DeleteTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string) error
 }
 
-// JobRepository persists conversion jobs (implemented by d1.JobRepo).
+// JobRepository persists a chapter's page rows (implemented by d1.JobRepo). It
+// is the shared write path used by the presign/register ingest flow and by the
+// video/novel registration services.
 type JobRepository interface {
-	Create(ctx context.Context, job domain.ConvertJob) error
-	UpdateStatus(ctx context.Context, id string, status domain.ConvertStatus, pageCount int, errMsg string) error
-	Get(ctx context.Context, id string) (domain.ConvertJob, error)
 	ReplacePages(ctx context.Context, chapterID string, pages []domain.StoredPage) error
 }
 
@@ -60,6 +64,14 @@ type JobRepository interface {
 // (implemented by a Cloudflare Queue producer; a no-op when the queue is off).
 type CoverMirrorQueue interface {
 	Enqueue(ctx context.Context, job domain.CoverMirrorJob) error
+}
+
+// CleanupQueue enqueues orphaned R2 object keys for async deletion after their
+// D1 rows have been removed (implemented by a Cloudflare Queue producer; a
+// no-op when the queue is off, so deletions still succeed with the artifacts
+// left behind rather than failing the request).
+type CleanupQueue interface {
+	Enqueue(ctx context.Context, keys []string) error
 }
 
 // SourceRepository persists content sources (implemented by d1.SourceRepo).
@@ -81,12 +93,12 @@ type ObjectStore interface {
 	// PresignGet mints a short-lived direct-fetch URL for key so the client
 	// pulls bytes from R2 without a proxy hop.
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
-}
-
-// ArchiveConverter turns an archive into AVIF pages (implemented by convert.Converter).
-type ArchiveConverter interface {
-	Convert(ctx context.Context, format domain.ArchiveFormat, archive []byte) ([]convert.Result, error)
-	PageCount(ctx context.Context, format domain.ArchiveFormat, archive []byte) (int, error)
+	// PresignPut mints a short-lived direct-upload URL for key so the client
+	// pushes bytes to R2 without a proxy hop. contentType, when non-empty, binds
+	// the required Content-Type header into the signature.
+	PresignPut(ctx context.Context, key string, ttl time.Duration, contentType string) (string, error)
+	// DeleteObjects removes objects by key (batched; "not found" is success).
+	DeleteObjects(ctx context.Context, keys []string) error
 }
 
 // ConnectionRepository persists external-source OAuth connections (implemented

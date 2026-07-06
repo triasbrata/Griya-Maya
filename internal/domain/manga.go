@@ -240,3 +240,16 @@ type StoredPage struct {
 	Height int
 	Kind   string
 }
+
+// AdminPage is a chapter page as seen by the admin surface. Unlike the reader's
+// Page, it deliberately exposes the raw R2 object key (R2Key) alongside a
+// short-lived presigned fetch URL (ImageURL) so an operator can inspect and
+// delete individual artifacts.
+type AdminPage struct {
+	Index    int    `json:"index"`
+	R2Key    string `json:"r2Key"`
+	ImageURL string `json:"imageUrl"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+}

@@ -6,6 +6,7 @@ package r2
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/triasbrata/mihon-manga-server/internal/config"
 )
@@ -78,6 +80,65 @@ func (s *Store) Put(ctx context.Context, key string, data []byte, contentType st
 	return nil
 }
 
+// deleteBatchLimit is the S3 DeleteObjects hard cap (1000 keys per request).
+const deleteBatchLimit = 1000
+
+// DeleteObjects removes the given object keys from the bucket, chunking into
+// batches of ≤1000 (the S3 DeleteObjects limit). Empty keys are skipped and an
+// empty/all-empty input is a no-op. A missing object is treated as success (R2
+// omits NoSuchKey from the per-key error list), so cleanup is idempotent.
+// Per-key and per-batch failures are aggregated so one bad key doesn't hide the
+// rest.
+func (s *Store) DeleteObjects(ctx context.Context, keys []string) error {
+	pending := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if strings.TrimSpace(k) != "" {
+			pending = append(pending, k)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for start := 0; start < len(pending); start += deleteBatchLimit {
+		end := start + deleteBatchLimit
+		if end > len(pending) {
+			end = len(pending)
+		}
+		objs := make([]s3types.ObjectIdentifier, 0, end-start)
+		for _, k := range pending[start:end] {
+			objs = append(objs, s3types.ObjectIdentifier{Key: aws.String(k)})
+		}
+		out, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(s.bucket),
+			Delete: &s3types.Delete{Objects: objs, Quiet: aws.Bool(true)},
+		})
+		if err != nil {
+			errs = append(errs, fmt.Errorf("r2 delete objects: %w", err))
+			continue
+		}
+		for _, e := range out.Errors {
+			key, code, msg := "", "", ""
+			if e.Key != nil {
+				key = *e.Key
+			}
+			if e.Code != nil {
+				code = *e.Code
+			}
+			if e.Message != nil {
+				msg = *e.Message
+			}
+			// A key that is already gone is a successful cleanup.
+			if code == "NoSuchKey" {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("r2 delete %q: %s (%s)", key, msg, code))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // PresignGet returns a short-lived SigV4 presigned GET URL for key, letting the
 // client fetch the object straight from R2 with no container proxy hop. The
 // signature lives in the query string (no auth header needed) and self-expires
@@ -90,6 +151,26 @@ func (s *Store) PresignGet(ctx context.Context, key string, ttl time.Duration) (
 	}, s3.WithPresignExpires(ttl))
 	if err != nil {
 		return "", fmt.Errorf("r2 presign %q: %w", key, err)
+	}
+	return req.URL, nil
+}
+
+// PresignPut mints a short-lived SigV4 presigned PUT URL for key, letting the
+// client upload the object straight to R2 with no container proxy hop. The
+// signature lives in the query string and self-expires after ttl. When
+// contentType is set the client must send a matching Content-Type header on the
+// PUT (it is part of the signature); when empty, no content type is bound.
+func (s *Store) PresignPut(ctx context.Context, key string, ttl time.Duration, contentType string) (string, error) {
+	in := &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}
+	if contentType != "" {
+		in.ContentType = aws.String(contentType)
+	}
+	req, err := s3.NewPresignClient(s.client).PresignPutObject(ctx, in, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("r2 presign put %q: %w", key, err)
 	}
 	return req.URL, nil
 }

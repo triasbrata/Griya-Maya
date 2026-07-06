@@ -23,7 +23,8 @@ func newMediaSvc(t *testing.T, baseURL string) (*service.MediaService, *mocks.Mo
 	repo := mocks.NewMockMediaRepository(t)
 	store := mocks.NewMockObjectStore(t)
 	cq := mocks.NewMockCoverMirrorQueue(t)
-	return service.NewMediaService(repo, store, cq, baseURL, testPresignTTL), repo, store
+	clq := mocks.NewMockCleanupQueue(t)
+	return service.NewMediaService(repo, store, cq, clq, baseURL, testPresignTTL), repo, store
 }
 
 func TestMediaService_Popular_DelegatesToList(t *testing.T) {
@@ -270,6 +271,9 @@ func TestMediaService_DeleteMedia(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
 
+	// No page keys and a non-mirrored cover → nothing enqueued for cleanup.
+	repo.EXPECT().PageKeysForMedia(ctx, "m1").Return(nil, nil)
+	repo.EXPECT().Get(ctx, "m1").Return(domain.Media{ID: "m1"}, nil)
 	repo.EXPECT().DeleteMedia(ctx, "m1").Return(nil)
 	require.NoError(t, svc.DeleteMedia(ctx, "m1"))
 
@@ -314,6 +318,9 @@ func TestMediaService_DeleteChapter(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
 
+	// DeleteChapter delegates to DeleteChapters: read pages, delete rows. No
+	// page keys here → no cleanup enqueue.
+	repo.EXPECT().Pages(ctx, "c1").Return(nil, nil)
 	repo.EXPECT().DeleteChapter(ctx, "c1").Return(nil)
 	require.NoError(t, svc.DeleteChapter(ctx, "c1"))
 

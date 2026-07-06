@@ -139,6 +139,65 @@ func (_c *MockMediaService_ChapterNeighbors_Call) RunAndReturn(run func(context.
 	return _c
 }
 
+// ChapterPagesAdmin provides a mock function with given fields: ctx, chapterID
+func (_m *MockMediaService) ChapterPagesAdmin(ctx context.Context, chapterID string) ([]domain.AdminPage, error) {
+	ret := _m.Called(ctx, chapterID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ChapterPagesAdmin")
+	}
+
+	var r0 []domain.AdminPage
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.AdminPage, error)); ok {
+		return rf(ctx, chapterID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.AdminPage); ok {
+		r0 = rf(ctx, chapterID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.AdminPage)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, chapterID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaService_ChapterPagesAdmin_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ChapterPagesAdmin'
+type MockMediaService_ChapterPagesAdmin_Call struct {
+	*mock.Call
+}
+
+// ChapterPagesAdmin is a helper method to define mock.On call
+//   - ctx context.Context
+//   - chapterID string
+func (_e *MockMediaService_Expecter) ChapterPagesAdmin(ctx interface{}, chapterID interface{}) *MockMediaService_ChapterPagesAdmin_Call {
+	return &MockMediaService_ChapterPagesAdmin_Call{Call: _e.mock.On("ChapterPagesAdmin", ctx, chapterID)}
+}
+
+func (_c *MockMediaService_ChapterPagesAdmin_Call) Run(run func(ctx context.Context, chapterID string)) *MockMediaService_ChapterPagesAdmin_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_ChapterPagesAdmin_Call) Return(_a0 []domain.AdminPage, _a1 error) *MockMediaService_ChapterPagesAdmin_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaService_ChapterPagesAdmin_Call) RunAndReturn(run func(context.Context, string) ([]domain.AdminPage, error)) *MockMediaService_ChapterPagesAdmin_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Chapters provides a mock function with given fields: ctx, mediaID
 func (_m *MockMediaService) Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error) {
 	ret := _m.Called(ctx, mediaID)
@@ -355,6 +414,101 @@ func (_c *MockMediaService_DeleteChapter_Call) Return(_a0 error) *MockMediaServi
 }
 
 func (_c *MockMediaService_DeleteChapter_Call) RunAndReturn(run func(context.Context, string) error) *MockMediaService_DeleteChapter_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteChapterPage provides a mock function with given fields: ctx, chapterID, idx
+func (_m *MockMediaService) DeleteChapterPage(ctx context.Context, chapterID string, idx int) error {
+	ret := _m.Called(ctx, chapterID, idx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteChapterPage")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) error); ok {
+		r0 = rf(ctx, chapterID, idx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaService_DeleteChapterPage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteChapterPage'
+type MockMediaService_DeleteChapterPage_Call struct {
+	*mock.Call
+}
+
+// DeleteChapterPage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - chapterID string
+//   - idx int
+func (_e *MockMediaService_Expecter) DeleteChapterPage(ctx interface{}, chapterID interface{}, idx interface{}) *MockMediaService_DeleteChapterPage_Call {
+	return &MockMediaService_DeleteChapterPage_Call{Call: _e.mock.On("DeleteChapterPage", ctx, chapterID, idx)}
+}
+
+func (_c *MockMediaService_DeleteChapterPage_Call) Run(run func(ctx context.Context, chapterID string, idx int)) *MockMediaService_DeleteChapterPage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_DeleteChapterPage_Call) Return(_a0 error) *MockMediaService_DeleteChapterPage_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaService_DeleteChapterPage_Call) RunAndReturn(run func(context.Context, string, int) error) *MockMediaService_DeleteChapterPage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteChapters provides a mock function with given fields: ctx, ids
+func (_m *MockMediaService) DeleteChapters(ctx context.Context, ids []string) error {
+	ret := _m.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteChapters")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, []string) error); ok {
+		r0 = rf(ctx, ids)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaService_DeleteChapters_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteChapters'
+type MockMediaService_DeleteChapters_Call struct {
+	*mock.Call
+}
+
+// DeleteChapters is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ids []string
+func (_e *MockMediaService_Expecter) DeleteChapters(ctx interface{}, ids interface{}) *MockMediaService_DeleteChapters_Call {
+	return &MockMediaService_DeleteChapters_Call{Call: _e.mock.On("DeleteChapters", ctx, ids)}
+}
+
+func (_c *MockMediaService_DeleteChapters_Call) Run(run func(ctx context.Context, ids []string)) *MockMediaService_DeleteChapters_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]string))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_DeleteChapters_Call) Return(_a0 error) *MockMediaService_DeleteChapters_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaService_DeleteChapters_Call) RunAndReturn(run func(context.Context, []string) error) *MockMediaService_DeleteChapters_Call {
 	_c.Call.Return(run)
 	return _c
 }

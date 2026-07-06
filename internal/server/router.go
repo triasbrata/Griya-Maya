@@ -139,12 +139,16 @@ func New(p RouterParams) *server.Hertz {
 	{
 		adminRead.GET("/sources", p.Source.AdminList)
 		adminRead.GET("/sources/:id", p.Source.Get)
+		// Inspect a chapter's pages with raw R2 keys (for artifact management).
+		adminRead.GET("/chapters/:id/pages", p.Media.AdminChapterPages)
 	}
 	adminWrite := h.Group("/v1/admin", p.OIDC.MiddlewareScope(oidc.ScopeAdminWrite))
 	{
 		adminWrite.POST("/sources", p.Source.Create)
 		adminWrite.PUT("/sources/:id", p.Source.Update)
 		adminWrite.DELETE("/sources/:id", p.Source.Delete)
+		// Delete a single page + its R2 artifact.
+		adminWrite.DELETE("/chapters/:id/pages/:idx", p.Media.AdminDeleteChapterPage)
 	}
 
 	// Catalog management (gated by manga.write): create/update/delete media and
@@ -157,6 +161,11 @@ func New(p RouterParams) *server.Hertz {
 		manage.POST("/media/:id/chapters", p.Media.CreateChapter)
 		manage.PUT("/chapters/:id", p.Media.UpdateChapter)
 		manage.DELETE("/chapters/:id", p.Media.DeleteChapter)
+		// Batch-capable delete (also used for a single chapter): body {ids:[...]}.
+		manage.POST("/chapters/delete", p.Media.DeleteChapters)
+		// Register browser-encoded AVIF pages (uploaded directly to R2 via
+		// presigned PUT) onto a chapter, replacing its page rows.
+		manage.POST("/chapters/:id/pages", p.Convert.RegisterPages)
 	}
 
 	// Taxonomy mutations, gated per kind by taksonomi.<kind>.write (resolved from
@@ -201,13 +210,13 @@ func New(p RouterParams) *server.Hertz {
 		usersWrite.DELETE("/:id", p.UserAdmin.Delete)
 	}
 
-	// Conversion (protected by the OIDC access-token middleware).
+	// Browser-side ingest (protected by the OIDC access-token middleware): mint
+	// presigned R2 PUT URLs so the browser uploads its AVIF pages directly. The
+	// uploaded pages are attached to a chapter via POST /v1/chapters/:id/pages
+	// (registered in the manage group above).
 	secured := h.Group("/v1/convert", p.OIDC.Middleware())
 	{
-		secured.POST("/upload", p.Convert.Upload)
-		secured.POST("", p.Convert.Convert)
-		secured.POST("/probe", p.Convert.Probe)
-		secured.GET("/jobs/:id", p.Convert.JobStatus)
+		secured.POST("/presign", p.Convert.Presign)
 	}
 
 	// HLS video ingest (protected): upload a bundle, then register it as a

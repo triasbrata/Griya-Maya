@@ -25,27 +25,27 @@ func (_m *MockConvertService) EXPECT() *MockConvertService_Expecter {
 	return &MockConvertService_Expecter{mock: &_m.Mock}
 }
 
-// Convert provides a mock function with given fields: ctx, req
-func (_m *MockConvertService) Convert(ctx context.Context, req domain.ConvertRequest) (service.ConvertResult, error) {
-	ret := _m.Called(ctx, req)
+// PresignUploads provides a mock function with given fields: ctx, count, contentType
+func (_m *MockConvertService) PresignUploads(ctx context.Context, count int, contentType string) (service.PresignResult, error) {
+	ret := _m.Called(ctx, count, contentType)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Convert")
+		panic("no return value specified for PresignUploads")
 	}
 
-	var r0 service.ConvertResult
+	var r0 service.PresignResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, domain.ConvertRequest) (service.ConvertResult, error)); ok {
-		return rf(ctx, req)
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) (service.PresignResult, error)); ok {
+		return rf(ctx, count, contentType)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, domain.ConvertRequest) service.ConvertResult); ok {
-		r0 = rf(ctx, req)
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) service.PresignResult); ok {
+		r0 = rf(ctx, count, contentType)
 	} else {
-		r0 = ret.Get(0).(service.ConvertResult)
+		r0 = ret.Get(0).(service.PresignResult)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, domain.ConvertRequest) error); ok {
-		r1 = rf(ctx, req)
+	if rf, ok := ret.Get(1).(func(context.Context, int, string) error); ok {
+		r1 = rf(ctx, count, contentType)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -53,56 +53,59 @@ func (_m *MockConvertService) Convert(ctx context.Context, req domain.ConvertReq
 	return r0, r1
 }
 
-// MockConvertService_Convert_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Convert'
-type MockConvertService_Convert_Call struct {
+// MockConvertService_PresignUploads_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PresignUploads'
+type MockConvertService_PresignUploads_Call struct {
 	*mock.Call
 }
 
-// Convert is a helper method to define mock.On call
+// PresignUploads is a helper method to define mock.On call
 //   - ctx context.Context
-//   - req domain.ConvertRequest
-func (_e *MockConvertService_Expecter) Convert(ctx interface{}, req interface{}) *MockConvertService_Convert_Call {
-	return &MockConvertService_Convert_Call{Call: _e.mock.On("Convert", ctx, req)}
+//   - count int
+//   - contentType string
+func (_e *MockConvertService_Expecter) PresignUploads(ctx interface{}, count interface{}, contentType interface{}) *MockConvertService_PresignUploads_Call {
+	return &MockConvertService_PresignUploads_Call{Call: _e.mock.On("PresignUploads", ctx, count, contentType)}
 }
 
-func (_c *MockConvertService_Convert_Call) Run(run func(ctx context.Context, req domain.ConvertRequest)) *MockConvertService_Convert_Call {
+func (_c *MockConvertService_PresignUploads_Call) Run(run func(ctx context.Context, count int, contentType string)) *MockConvertService_PresignUploads_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(domain.ConvertRequest))
+		run(args[0].(context.Context), args[1].(int), args[2].(string))
 	})
 	return _c
 }
 
-func (_c *MockConvertService_Convert_Call) Return(_a0 service.ConvertResult, _a1 error) *MockConvertService_Convert_Call {
+func (_c *MockConvertService_PresignUploads_Call) Return(_a0 service.PresignResult, _a1 error) *MockConvertService_PresignUploads_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockConvertService_Convert_Call) RunAndReturn(run func(context.Context, domain.ConvertRequest) (service.ConvertResult, error)) *MockConvertService_Convert_Call {
+func (_c *MockConvertService_PresignUploads_Call) RunAndReturn(run func(context.Context, int, string) (service.PresignResult, error)) *MockConvertService_PresignUploads_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// Job provides a mock function with given fields: ctx, id
-func (_m *MockConvertService) Job(ctx context.Context, id string) (domain.ConvertJob, error) {
-	ret := _m.Called(ctx, id)
+// RegisterPages provides a mock function with given fields: ctx, chapterID, pages
+func (_m *MockConvertService) RegisterPages(ctx context.Context, chapterID string, pages []domain.StoredPage) ([]domain.Page, error) {
+	ret := _m.Called(ctx, chapterID, pages)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Job")
+		panic("no return value specified for RegisterPages")
 	}
 
-	var r0 domain.ConvertJob
+	var r0 []domain.Page
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (domain.ConvertJob, error)); ok {
-		return rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, string, []domain.StoredPage) ([]domain.Page, error)); ok {
+		return rf(ctx, chapterID, pages)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) domain.ConvertJob); ok {
-		r0 = rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, string, []domain.StoredPage) []domain.Page); ok {
+		r0 = rf(ctx, chapterID, pages)
 	} else {
-		r0 = ret.Get(0).(domain.ConvertJob)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Page)
+		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, id)
+	if rf, ok := ret.Get(1).(func(context.Context, string, []domain.StoredPage) error); ok {
+		r1 = rf(ctx, chapterID, pages)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -110,88 +113,32 @@ func (_m *MockConvertService) Job(ctx context.Context, id string) (domain.Conver
 	return r0, r1
 }
 
-// MockConvertService_Job_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Job'
-type MockConvertService_Job_Call struct {
+// MockConvertService_RegisterPages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterPages'
+type MockConvertService_RegisterPages_Call struct {
 	*mock.Call
 }
 
-// Job is a helper method to define mock.On call
+// RegisterPages is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id string
-func (_e *MockConvertService_Expecter) Job(ctx interface{}, id interface{}) *MockConvertService_Job_Call {
-	return &MockConvertService_Job_Call{Call: _e.mock.On("Job", ctx, id)}
+//   - chapterID string
+//   - pages []domain.StoredPage
+func (_e *MockConvertService_Expecter) RegisterPages(ctx interface{}, chapterID interface{}, pages interface{}) *MockConvertService_RegisterPages_Call {
+	return &MockConvertService_RegisterPages_Call{Call: _e.mock.On("RegisterPages", ctx, chapterID, pages)}
 }
 
-func (_c *MockConvertService_Job_Call) Run(run func(ctx context.Context, id string)) *MockConvertService_Job_Call {
+func (_c *MockConvertService_RegisterPages_Call) Run(run func(ctx context.Context, chapterID string, pages []domain.StoredPage)) *MockConvertService_RegisterPages_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].([]domain.StoredPage))
 	})
 	return _c
 }
 
-func (_c *MockConvertService_Job_Call) Return(_a0 domain.ConvertJob, _a1 error) *MockConvertService_Job_Call {
+func (_c *MockConvertService_RegisterPages_Call) Return(_a0 []domain.Page, _a1 error) *MockConvertService_RegisterPages_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockConvertService_Job_Call) RunAndReturn(run func(context.Context, string) (domain.ConvertJob, error)) *MockConvertService_Job_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Probe provides a mock function with given fields: ctx, req
-func (_m *MockConvertService) Probe(ctx context.Context, req domain.ConvertRequest) (service.ProbeResult, error) {
-	ret := _m.Called(ctx, req)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Probe")
-	}
-
-	var r0 service.ProbeResult
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, domain.ConvertRequest) (service.ProbeResult, error)); ok {
-		return rf(ctx, req)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, domain.ConvertRequest) service.ProbeResult); ok {
-		r0 = rf(ctx, req)
-	} else {
-		r0 = ret.Get(0).(service.ProbeResult)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, domain.ConvertRequest) error); ok {
-		r1 = rf(ctx, req)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockConvertService_Probe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Probe'
-type MockConvertService_Probe_Call struct {
-	*mock.Call
-}
-
-// Probe is a helper method to define mock.On call
-//   - ctx context.Context
-//   - req domain.ConvertRequest
-func (_e *MockConvertService_Expecter) Probe(ctx interface{}, req interface{}) *MockConvertService_Probe_Call {
-	return &MockConvertService_Probe_Call{Call: _e.mock.On("Probe", ctx, req)}
-}
-
-func (_c *MockConvertService_Probe_Call) Run(run func(ctx context.Context, req domain.ConvertRequest)) *MockConvertService_Probe_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(domain.ConvertRequest))
-	})
-	return _c
-}
-
-func (_c *MockConvertService_Probe_Call) Return(_a0 service.ProbeResult, _a1 error) *MockConvertService_Probe_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockConvertService_Probe_Call) RunAndReturn(run func(context.Context, domain.ConvertRequest) (service.ProbeResult, error)) *MockConvertService_Probe_Call {
+func (_c *MockConvertService_RegisterPages_Call) RunAndReturn(run func(context.Context, string, []domain.StoredPage) ([]domain.Page, error)) *MockConvertService_RegisterPages_Call {
 	_c.Call.Return(run)
 	return _c
 }

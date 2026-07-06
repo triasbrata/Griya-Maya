@@ -443,6 +443,54 @@ func (_c *MockMediaRepository_DeleteMedia_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
+// DeletePage provides a mock function with given fields: ctx, chapterID, idx
+func (_m *MockMediaRepository) DeletePage(ctx context.Context, chapterID string, idx int) error {
+	ret := _m.Called(ctx, chapterID, idx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePage")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) error); ok {
+		r0 = rf(ctx, chapterID, idx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaRepository_DeletePage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeletePage'
+type MockMediaRepository_DeletePage_Call struct {
+	*mock.Call
+}
+
+// DeletePage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - chapterID string
+//   - idx int
+func (_e *MockMediaRepository_Expecter) DeletePage(ctx interface{}, chapterID interface{}, idx interface{}) *MockMediaRepository_DeletePage_Call {
+	return &MockMediaRepository_DeletePage_Call{Call: _e.mock.On("DeletePage", ctx, chapterID, idx)}
+}
+
+func (_c *MockMediaRepository_DeletePage_Call) Run(run func(ctx context.Context, chapterID string, idx int)) *MockMediaRepository_DeletePage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_DeletePage_Call) Return(_a0 error) *MockMediaRepository_DeletePage_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaRepository_DeletePage_Call) RunAndReturn(run func(context.Context, string, int) error) *MockMediaRepository_DeletePage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteTaxonomy provides a mock function with given fields: ctx, kind, id
 func (_m *MockMediaRepository) DeleteTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string) error {
 	ret := _m.Called(ctx, kind, id)
@@ -723,6 +771,65 @@ func (_c *MockMediaRepository_ListTaxonomy_Call) Return(_a0 []domain.Taxonomy, _
 }
 
 func (_c *MockMediaRepository_ListTaxonomy_Call) RunAndReturn(run func(context.Context, domain.TaxonomyKind) ([]domain.Taxonomy, error)) *MockMediaRepository_ListTaxonomy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PageKeysForMedia provides a mock function with given fields: ctx, mediaID
+func (_m *MockMediaRepository) PageKeysForMedia(ctx context.Context, mediaID string) ([]string, error) {
+	ret := _m.Called(ctx, mediaID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PageKeysForMedia")
+	}
+
+	var r0 []string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]string, error)); ok {
+		return rf(ctx, mediaID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []string); ok {
+		r0 = rf(ctx, mediaID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, mediaID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaRepository_PageKeysForMedia_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PageKeysForMedia'
+type MockMediaRepository_PageKeysForMedia_Call struct {
+	*mock.Call
+}
+
+// PageKeysForMedia is a helper method to define mock.On call
+//   - ctx context.Context
+//   - mediaID string
+func (_e *MockMediaRepository_Expecter) PageKeysForMedia(ctx interface{}, mediaID interface{}) *MockMediaRepository_PageKeysForMedia_Call {
+	return &MockMediaRepository_PageKeysForMedia_Call{Call: _e.mock.On("PageKeysForMedia", ctx, mediaID)}
+}
+
+func (_c *MockMediaRepository_PageKeysForMedia_Call) Run(run func(ctx context.Context, mediaID string)) *MockMediaRepository_PageKeysForMedia_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_PageKeysForMedia_Call) Return(_a0 []string, _a1 error) *MockMediaRepository_PageKeysForMedia_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaRepository_PageKeysForMedia_Call) RunAndReturn(run func(context.Context, string) ([]string, error)) *MockMediaRepository_PageKeysForMedia_Call {
 	_c.Call.Return(run)
 	return _c
 }

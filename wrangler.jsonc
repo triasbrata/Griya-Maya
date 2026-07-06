@@ -10,36 +10,34 @@
       "class_name": "MangaServer",
       "image": "./Dockerfile",
       "instance_type": "standard",
-      "max_instances": 5
-    }
+      "max_instances": 5,
+    },
   ],
 
   // Durable Object that backs the container lifecycle.
   "durable_objects": {
-    "bindings": [
-      { "name": "MANGA_SERVER", "class_name": "MangaServer" }
-    ]
+    "bindings": [{ "name": "MANGA_SERVER", "class_name": "MangaServer" }],
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["MangaServer"] }
-  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MangaServer"] }],
 
   // Resources. The Go container reaches R2 via the S3 API and D1 via the REST
   // API using the credentials below, so these bindings are declared mostly to
   // provision + document the resources. `database_id` is filled by
   // `wrangler d1 create manga`.
-  "r2_buckets": [
-    { "binding": "MANGA_BUCKET", "bucket_name": "manga" }
-  ],
+  "r2_buckets": [{ "binding": "MANGA_BUCKET", "bucket_name": "manga" }],
   "d1_databases": [
-    { "binding": "DB", "database_name": "manga", "database_id": "83568d41-0316-47d9-ba68-03b785717c4a" }
+    {
+      "binding": "DB",
+      "database_name": "manga",
+      "database_id": "83568d41-0316-47d9-ba68-03b785717c4a",
+    },
   ],
 
   // KV namespace holding short-lived OIDC state (auth requests, codes, access
   // tokens) with per-key TTL. The Go container reaches KV via the REST API using
   // CF_ACCOUNT_ID + CF_API_TOKEN + KV_NAMESPACE_ID.
   "kv_namespaces": [
-    { "binding": "MANGA_KV", "id": "f4c77dd0ad4f4ce3a94de30c9efdcf7d" }
+    { "binding": "MANGA_KV", "id": "f4c77dd0ad4f4ce3a94de30c9efdcf7d" },
   ],
 
   // Non-secret vars. Secrets (CF_API_TOKEN, R2_*, OIDC_CRYPTO_KEY,
@@ -63,8 +61,12 @@
     // Cloudflare Queue UUID for the async cover-image mirror (empty = disabled).
     // Queue "cover-mirror" (http_pull consumer). The container produces +
     // pull-consumes via the Queues REST API using CF_ACCOUNT_ID + CF_API_TOKEN.
-    "COVER_QUEUE_ID": "71cff4a21653480a99a59255c74399c3"
+    "COVER_QUEUE_ID": "71cff4a21653480a99a59255c74399c3",
+    // Cloudflare Queue UUID for async R2 cleanup of orphaned page objects
+    // (deleted chapters/pages/media). Empty = disabled. Queue "page-cleanup"
+    // (http_pull consumer); same CF_ACCOUNT_ID + CF_API_TOKEN as the cover queue.
+    "CLEANUP_QUEUE_ID": "66d36aeee6a6481f83ee57df6ea11f9b",
   },
 
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
 }

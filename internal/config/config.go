@@ -20,9 +20,10 @@ type Config struct {
 	R2          R2Config
 	KV          KVConfig
 	OIDC        OIDCConfig
-	Image       ImageConfig
-	Connections ConnectionsConfig
-	Queue       QueueConfig
+	Image        ImageConfig
+	Connections  ConnectionsConfig
+	Queue        QueueConfig
+	CleanupQueue CleanupQueueConfig
 }
 
 // QueueConfig addresses a Cloudflare Queue via the REST API (push + http_pull
@@ -34,6 +35,25 @@ type QueueConfig struct {
 	// path — NOT the queue name. From COVER_QUEUE_ID.
 	QueueID  string
 	APIToken string
+}
+
+// CleanupQueueConfig addresses a second Cloudflare Queue (REST push + http_pull
+// consume) that backs the async R2 cleanup of orphaned page objects. When
+// QueueID is empty the cleanup is disabled (deletes still succeed, artifacts
+// stay in R2). Distinct from QueueConfig so fx can wire the two queues
+// independently; it reuses the same account id + API token.
+type CleanupQueueConfig struct {
+	AccountID string
+	// QueueID is the queue's UUID (from `wrangler queues list`). From
+	// CLEANUP_QUEUE_ID.
+	QueueID  string
+	APIToken string
+}
+
+// AsQueue adapts a CleanupQueueConfig to the shared QueueConfig the queue client
+// consumes.
+func (c CleanupQueueConfig) AsQueue() QueueConfig {
+	return QueueConfig{AccountID: c.AccountID, QueueID: c.QueueID, APIToken: c.APIToken}
 }
 
 // HTTPConfig controls the Hertz server.
@@ -156,6 +176,11 @@ func Load() (Config, error) {
 		Queue: QueueConfig{
 			AccountID: os.Getenv("CF_ACCOUNT_ID"),
 			QueueID:   os.Getenv("COVER_QUEUE_ID"),
+			APIToken:  os.Getenv("CF_API_TOKEN"),
+		},
+		CleanupQueue: CleanupQueueConfig{
+			AccountID: os.Getenv("CF_ACCOUNT_ID"),
+			QueueID:   os.Getenv("CLEANUP_QUEUE_ID"),
 			APIToken:  os.Getenv("CF_API_TOKEN"),
 		},
 		OIDC: OIDCConfig{

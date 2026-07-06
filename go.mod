@@ -8,7 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.60.1
 	github.com/cloudwego/hertz v0.10.5
 	github.com/gen2brain/avif v0.4.2
-	github.com/gen2brain/go-fitz v1.28.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
 	github.com/hertz-contrib/cors v0.1.0

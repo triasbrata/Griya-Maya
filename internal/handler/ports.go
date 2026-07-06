@@ -30,6 +30,13 @@ type MediaService interface {
 	CreateChapter(ctx context.Context, req domain.ChapterWriteRequest) (domain.Chapter, error)
 	UpdateChapter(ctx context.Context, id string, req domain.ChapterWriteRequest) (domain.Chapter, error)
 	DeleteChapter(ctx context.Context, id string) error
+	// DeleteChapters removes one or more chapters (and their pages), cleaning up
+	// their R2 artifacts. Backs both the single and batch delete endpoints.
+	DeleteChapters(ctx context.Context, ids []string) error
+
+	// Admin page management (raw R2 keys + per-page delete).
+	ChapterPagesAdmin(ctx context.Context, chapterID string) ([]domain.AdminPage, error)
+	DeleteChapterPage(ctx context.Context, chapterID string, idx int) error
 }
 
 // SourceService is the source listing + management port the SourceHandler
@@ -51,12 +58,12 @@ type TaxonomyService interface {
 	Delete(ctx context.Context, kind domain.TaxonomyKind, id string) error
 }
 
-// ConvertService is the conversion port the ConvertHandler depends on
-// (implemented by *service.ConvertService).
+// ConvertService is the browser-ingest port the ConvertHandler depends on
+// (implemented by *service.ConvertService): mint presigned upload URLs and
+// register browser-uploaded AVIF pages onto a chapter.
 type ConvertService interface {
-	Convert(ctx context.Context, req domain.ConvertRequest) (service.ConvertResult, error)
-	Probe(ctx context.Context, req domain.ConvertRequest) (service.ProbeResult, error)
-	Job(ctx context.Context, id string) (domain.ConvertJob, error)
+	PresignUploads(ctx context.Context, count int, contentType string) (service.PresignResult, error)
+	RegisterPages(ctx context.Context, chapterID string, pages []domain.StoredPage) ([]domain.Page, error)
 }
 
 // VideoService is the HLS registration port the VideoHandler depends on

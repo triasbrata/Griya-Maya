@@ -447,3 +447,95 @@ for the required entry format.
 - Ops: create the queue (`wrangler queues create cover-mirror`), enable HTTP pull
   (`wrangler queues consumer http add cover-mirror`), ensure CF_API_TOKEN has Queues
   read+write, set COVER_QUEUE_ID (env + wrangler var).
+
+## 2026-07-05 — Browser-side AVIF: presign PUT batch + register-pages endpoints
+- What:
+  - Added ObjectStore.PresignPut (r2.Store) mirroring PresignGet; mints SigV4
+    presigned PUT URLs (Content-Type bound into the signature when non-empty).
+  - New POST /v1/convert/presign (manga.write): mints one fresh pages/<uuid>/
+    prefix + N presigned PUT URLs (page-%04d.avif, 30m TTL) for the browser to
+    upload AVIF pages straight to R2. Service PresignUploads + PresignResult/Item.
+  - New POST /v1/chapters/:id/pages (manga.write): registers browser-uploaded
+    AVIF pages onto a chapter via JobRepository.ReplacePages, returns resolved
+    domain.Page. Service RegisterPages.
+- Why: move CBZ/EPUB/PDF → AVIF conversion to the browser (encode + direct R2
+  upload), so the server only mints presigned PUTs and records page rows.
+- Files: internal/repository/r2/store.go, internal/service/{convert_service,ports}.go,
+  internal/handler/{convert_handler,ports}.go, internal/server/router.go,
+  .mockery mocks (ObjectStore, ConvertService), swagger regen.
+- Tests: go build + go test ./... → 301 pass. Service 88.3%, handler 86.2% (>80%).
+  Added table-driven PresignUploads (count validation, distinct keys/one prefix,
+  custom content type, presign error) + RegisterPages (map/ReplacePages, empty +
+  missing-r2Key → ErrInvalidInput, repo error) service tests, plus handler tests.
+- Ops: direct browser→R2 presigned PUT requires an R2 bucket CORS policy allowing
+  the admin origin + PUT + Content-Type header (operational config, not code).
+
+## 2026-07-05 — Remove dead server-side archive→AVIF conversion pipeline
+- What:
+  - Removed the server-side convert endpoints now that the admin encodes AVIF in
+    the browser and uploads via presigned R2 PUT: POST /v1/convert/upload,
+    POST /v1/convert, POST /v1/convert/probe, GET /v1/convert/jobs/:id (handlers,
+    service methods Convert/Probe/Job/run/assignSegments, ConvertResult/ProbeResult).
+  - Deleted the ArchiveConverter port + its convert.Converter impl and the whole
+    extraction stack (converter.go, count.go, extract.go, cbz.go, epub.go,
+    pdf_mupdf.go, pdf_stub.go + tests). Kept internal/convert/avif.go
+    (EncodeImage/EncodeOptions still used by the cover-mirror worker).
+  - Trimmed JobRepository/d1.JobRepo to just ReplacePages (dropped Create/
+    UpdateStatus/Get); trimmed ConvertService to PresignUploads+RegisterPages
+    (deps now only ObjectStore + ReplacePages). Removed domain ConvertRequest/
+    ConvertSegment/ConvertJob/ConvertStatus/ArchiveFormat (kept the shared error
+    vars). Rewired fx module; regenerated mocks (make mocks) + swagger (make docs);
+    dropped the now-unused go-fitz dependency via go mod tidy.
+  - Surviving convert-related routes: POST /v1/convert/presign and
+    POST /v1/chapters/:id/pages (plus untouched reads/image proxy).
+- Why: conversion moved fully client-side; the old pipeline was dead code.
+- Files: internal/{handler/convert_handler.go,handler/ports.go,
+  service/convert_service.go,service/ports.go,app/module.go,server/router.go,
+  domain/convert.go,repository/d1/job_repo.go}, internal/convert/* (deletions),
+  regenerated mocks + swagger, .mockery.yaml, go.mod/go.sum, and the matching
+  *_test.go files.
+- Tests: go build ./... + go vet ./... clean; go test ./... → 262 pass.
+  CGO `-tags mupdf` build also verified green.
+- Notes: The convert_job D1 table / migration were KEPT — migration
+  0004_media_normalize.sql renames a column on convert_job and migrations are
+  append-only history, so dropping it would break the migration chain / existing
+  DBs. The table is simply no longer written to.
+
+## 2026-07-06 — Async R2 cleanup for chapter/page/media deletion + admin page tools
+- What:
+  - Fixed the orphaned-R2 bug: deleting chapters/pages/media removed only D1 rows,
+    leaving AVIF/HLS/txt objects (and mirrored covers) in R2 forever. Added a
+    dedicated async cleanup queue mirroring covermirror: new package
+    internal/cleanup (Producer→service.CleanupQueue, background pull/ack Worker
+    that batch-deletes keys), a second Cloudflare Queue from a new CLEANUP_QUEUE_ID
+    env, and an FX lifecycle hook (registerCleanup). Inert when the env is unset.
+  - R2: added Store.DeleteObjects (batched S3 DeleteObjects, ≤1000/req, NoSuchKey
+    treated as success, per-key/batch errors aggregated) + service.ObjectStore port.
+  - MediaService now collects page keys before deleting rows and enqueues ONE
+    cleanup job after success: DeleteChapters(ids) (batch), DeleteChapter delegates
+    to it, and DeleteMedia (pages via new repo PageKeysForMedia + mirrored cover).
+  - New endpoints: POST /v1/chapters/delete {ids:[]}→204 (manga.write; single+batch,
+    idempotent); GET /v1/admin/chapters/:id/pages→pages with raw r2Key + presigned
+    imageUrl (admin.read); DELETE /v1/admin/chapters/:id/pages/:idx→204 (admin.write,
+    new repo DeletePage). Existing DELETE /v1/chapters/:id kept, now cleans R2 too.
+  - Added domain.AdminPage + domain.PageCleanupJob; config.CleanupQueueConfig.
+- Why: prevent unbounded R2 storage growth from deletes; give the admin panel a
+  batch delete and per-artifact page management surface.
+- Files: internal/cleanup/cleanup.go(+test), internal/repository/r2/store.go,
+  internal/repository/d1/media_repo.go(+page_cleanup_test.go),
+  internal/service/{ports.go,media_service.go}(+page_cleanup_test.go),
+  internal/handler/{ports.go,media_handler.go}(+media_handler_test.go),
+  internal/domain/{manga.go,cleanup.go}, internal/config/config.go,
+  internal/app/module.go, internal/server/router.go, .mockery.yaml,
+  worker/index.ts, wrangler.jsonc, .env.example, regenerated mocks + swagger.
+- Tests: make mocks + make docs regenerated; go build ./... && go vet ./... clean;
+  go test ./... → 297 pass. Gated coverage: domain 93.9%, handler 88.7%,
+  service 88.7%, d1 83.7% (all ≥80%; d1 up from 75.1% baseline). New cleanup pkg
+  (infra, non-gated) at 41.5% with Producer/process/backoff covered.
+- Notes: `make cover` aggregate step errors with "no such tool covdata" in this
+  toolchain (pre-existing env issue, unrelated) — per-package coverage above is
+  authoritative. The two queue clients (cover + cleanup) share the *queue.Client
+  type, so they're built inside per-queue constructors in module.go rather than
+  provided as a shared fx value. Operator action: provision a "page-cleanup" queue
+  with an http_pull consumer and set CLEANUP_QUEUE_ID (wrangler.jsonc + secret/var);
+  empty leaves cleanup disabled (deletes still succeed, objects remain).

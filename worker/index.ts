@@ -47,6 +47,10 @@ export class MangaServer extends Container {
     // produces/pull-consumes via the Queues REST API using CF_ACCOUNT_ID +
     // CF_API_TOKEN (token needs Queues read+write).
     COVER_QUEUE_ID: this.env.COVER_QUEUE_ID,
+    // Cloudflare Queue (UUID) backing the async R2 cleanup of orphaned page
+    // objects (deleted chapters/pages/media). Empty disables cleanup (rows are
+    // removed, R2 objects are left behind). Same account creds as the cover queue.
+    CLEANUP_QUEUE_ID: this.env.CLEANUP_QUEUE_ID,
   };
 }
 

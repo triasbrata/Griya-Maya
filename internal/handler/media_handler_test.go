@@ -262,6 +262,105 @@ func TestMediaHandler_DeleteChapter(t *testing.T) {
 	assert.Equal(t, consts.StatusNoContent, c.Response.StatusCode())
 }
 
+func TestMediaHandler_DeleteChapters_Batch(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	// Blank ids are trimmed out before the service sees them.
+	svc.EXPECT().DeleteChapters(mock.Anything, []string{"c1", "c2"}).Return(nil)
+
+	body := []byte(`{"ids":["c1"," ","c2"]}`)
+	c := newCtx("POST", "/v1/chapters/delete", nil, body, "application/json")
+	h.DeleteChapters(context.Background(), c)
+	assert.Equal(t, consts.StatusNoContent, c.Response.StatusCode())
+}
+
+func TestMediaHandler_DeleteChapters_Single(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	svc.EXPECT().DeleteChapters(mock.Anything, []string{"c1"}).Return(nil)
+
+	body := []byte(`{"ids":["c1"]}`)
+	c := newCtx("POST", "/v1/chapters/delete", nil, body, "application/json")
+	h.DeleteChapters(context.Background(), c)
+	assert.Equal(t, consts.StatusNoContent, c.Response.StatusCode())
+}
+
+func TestMediaHandler_DeleteChapters_BadJSON(t *testing.T) {
+	h, _, _ := newMediaHandler(t)
+
+	c := newCtx("POST", "/v1/chapters/delete", nil, []byte("{not json"), "application/json")
+	h.DeleteChapters(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+}
+
+func TestMediaHandler_DeleteChapters_EmptyIDs(t *testing.T) {
+	h, _, _ := newMediaHandler(t)
+
+	c := newCtx("POST", "/v1/chapters/delete", nil, []byte(`{"ids":[" "]}`), "application/json")
+	h.DeleteChapters(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+	assert.Equal(t, "invalid_input", decodeError(t, c).ErrorCode)
+}
+
+func TestMediaHandler_AdminChapterPages(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	svc.EXPECT().ChapterPagesAdmin(mock.Anything, "c1").Return([]domain.AdminPage{
+		{Index: 0, R2Key: "pages/a.avif", ImageURL: "https://r2/presigned", Width: 800},
+	}, nil)
+
+	c := newCtx("GET", "/v1/admin/chapters/c1/pages", map[string]string{"id": "c1"}, nil, "")
+	h.AdminChapterPages(context.Background(), c)
+
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var got []domain.AdminPage
+	decodeJSON(t, c, &got)
+	require.Len(t, got, 1)
+	assert.Equal(t, "pages/a.avif", got[0].R2Key)
+	assert.Equal(t, "https://r2/presigned", got[0].ImageURL)
+}
+
+func TestMediaHandler_AdminChapterPages_Error(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	svc.EXPECT().ChapterPagesAdmin(mock.Anything, "missing").Return(nil, domain.ErrNotFound)
+
+	c := newCtx("GET", "/v1/admin/chapters/missing/pages", map[string]string{"id": "missing"}, nil, "")
+	h.AdminChapterPages(context.Background(), c)
+	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
+}
+
+func TestMediaHandler_AdminDeleteChapterPage(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	svc.EXPECT().DeleteChapterPage(mock.Anything, "c1", 2).Return(nil)
+
+	c := newCtx("DELETE", "/v1/admin/chapters/c1/pages/2",
+		map[string]string{"id": "c1", "idx": "2"}, nil, "")
+	h.AdminDeleteChapterPage(context.Background(), c)
+	assert.Equal(t, consts.StatusNoContent, c.Response.StatusCode())
+}
+
+func TestMediaHandler_AdminDeleteChapterPage_BadIdx(t *testing.T) {
+	h, _, _ := newMediaHandler(t)
+
+	c := newCtx("DELETE", "/v1/admin/chapters/c1/pages/xx",
+		map[string]string{"id": "c1", "idx": "xx"}, nil, "")
+	h.AdminDeleteChapterPage(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+}
+
+func TestMediaHandler_AdminDeleteChapterPage_NotFound(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	svc.EXPECT().DeleteChapterPage(mock.Anything, "c1", 9).Return(domain.ErrNotFound)
+
+	c := newCtx("DELETE", "/v1/admin/chapters/c1/pages/9",
+		map[string]string{"id": "c1", "idx": "9"}, nil, "")
+	h.AdminDeleteChapterPage(context.Background(), c)
+	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
+}
+
 func TestMediaHandler_Image_MissingKey(t *testing.T) {
 	h, _, _ := newMediaHandler(t)
 

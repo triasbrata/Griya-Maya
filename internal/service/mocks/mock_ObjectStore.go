@@ -23,6 +23,53 @@ func (_m *MockObjectStore) EXPECT() *MockObjectStore_Expecter {
 	return &MockObjectStore_Expecter{mock: &_m.Mock}
 }
 
+// DeleteObjects provides a mock function with given fields: ctx, keys
+func (_m *MockObjectStore) DeleteObjects(ctx context.Context, keys []string) error {
+	ret := _m.Called(ctx, keys)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteObjects")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, []string) error); ok {
+		r0 = rf(ctx, keys)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockObjectStore_DeleteObjects_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteObjects'
+type MockObjectStore_DeleteObjects_Call struct {
+	*mock.Call
+}
+
+// DeleteObjects is a helper method to define mock.On call
+//   - ctx context.Context
+//   - keys []string
+func (_e *MockObjectStore_Expecter) DeleteObjects(ctx interface{}, keys interface{}) *MockObjectStore_DeleteObjects_Call {
+	return &MockObjectStore_DeleteObjects_Call{Call: _e.mock.On("DeleteObjects", ctx, keys)}
+}
+
+func (_c *MockObjectStore_DeleteObjects_Call) Run(run func(ctx context.Context, keys []string)) *MockObjectStore_DeleteObjects_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]string))
+	})
+	return _c
+}
+
+func (_c *MockObjectStore_DeleteObjects_Call) Return(_a0 error) *MockObjectStore_DeleteObjects_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockObjectStore_DeleteObjects_Call) RunAndReturn(run func(context.Context, []string) error) *MockObjectStore_DeleteObjects_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Get provides a mock function with given fields: ctx, key
 func (_m *MockObjectStore) Get(ctx context.Context, key string) ([]byte, string, error) {
 	ret := _m.Called(ctx, key)
@@ -143,6 +190,65 @@ func (_c *MockObjectStore_PresignGet_Call) Return(_a0 string, _a1 error) *MockOb
 }
 
 func (_c *MockObjectStore_PresignGet_Call) RunAndReturn(run func(context.Context, string, time.Duration) (string, error)) *MockObjectStore_PresignGet_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PresignPut provides a mock function with given fields: ctx, key, ttl, contentType
+func (_m *MockObjectStore) PresignPut(ctx context.Context, key string, ttl time.Duration, contentType string) (string, error) {
+	ret := _m.Called(ctx, key, ttl, contentType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PresignPut")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Duration, string) (string, error)); ok {
+		return rf(ctx, key, ttl, contentType)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Duration, string) string); ok {
+		r0 = rf(ctx, key, ttl, contentType)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, time.Duration, string) error); ok {
+		r1 = rf(ctx, key, ttl, contentType)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockObjectStore_PresignPut_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PresignPut'
+type MockObjectStore_PresignPut_Call struct {
+	*mock.Call
+}
+
+// PresignPut is a helper method to define mock.On call
+//   - ctx context.Context
+//   - key string
+//   - ttl time.Duration
+//   - contentType string
+func (_e *MockObjectStore_Expecter) PresignPut(ctx interface{}, key interface{}, ttl interface{}, contentType interface{}) *MockObjectStore_PresignPut_Call {
+	return &MockObjectStore_PresignPut_Call{Call: _e.mock.On("PresignPut", ctx, key, ttl, contentType)}
+}
+
+func (_c *MockObjectStore_PresignPut_Call) Run(run func(ctx context.Context, key string, ttl time.Duration, contentType string)) *MockObjectStore_PresignPut_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(time.Duration), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *MockObjectStore_PresignPut_Call) Return(_a0 string, _a1 error) *MockObjectStore_PresignPut_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockObjectStore_PresignPut_Call) RunAndReturn(run func(context.Context, string, time.Duration, string) (string, error)) *MockObjectStore_PresignPut_Call {
 	_c.Call.Return(run)
 	return _c
 }

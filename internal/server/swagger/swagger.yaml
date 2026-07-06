@@ -1,12 +1,20 @@
 components:
   schemas:
-    domain.ArchiveFormat:
-      description: Format overrides format detection when set.
-      type: string
-      x-enum-varnames:
-      - FormatCBZ
-      - FormatEPUB
-      - FormatPDF
+    domain.AdminPage:
+      properties:
+        height:
+          type: integer
+        imageUrl:
+          type: string
+        index:
+          type: integer
+        kind:
+          type: string
+        r2Key:
+          type: string
+        width:
+          type: integer
+      type: object
     domain.Chapter:
       properties:
         dateUpload:
@@ -91,80 +99,6 @@ components:
         provider:
           $ref: '#/components/schemas/domain.Provider'
       type: object
-    domain.ConvertJob:
-      properties:
-        chapterId:
-          type: string
-        createdAt:
-          type: string
-        error:
-          type: string
-        format:
-          description: Format overrides format detection when set.
-          type: string
-          x-enum-varnames:
-          - FormatCBZ
-          - FormatEPUB
-          - FormatPDF
-        id:
-          type: string
-        mediaId:
-          type: string
-        outputPrefix:
-          type: string
-        pageCount:
-          type: integer
-        sourceKey:
-          type: string
-        status:
-          $ref: '#/components/schemas/domain.ConvertStatus'
-        updatedAt:
-          type: string
-      type: object
-    domain.ConvertRequest:
-      properties:
-        chapterId:
-          type: string
-        format:
-          $ref: '#/components/schemas/domain.ArchiveFormat'
-        mediaId:
-          description: MediaID / ChapterID associate the produced pages with catalog
-            rows.
-          type: string
-        outputPrefix:
-          description: |-
-            OutputPrefix is the R2 key prefix under which page-NNNN.avif are written.
-            Defaults to "pages/<jobID>/".
-          type: string
-        segments:
-          description: |-
-            Segments, when non-empty, splits the single archive into multiple chapters:
-            each segment's page range (1-based, inclusive) is assigned to its chapter.
-            Takes precedence over the top-level ChapterID for page association.
-          items:
-            $ref: '#/components/schemas/domain.ConvertSegment'
-          type: array
-          uniqueItems: false
-        sourceKey:
-          description: SourceKey is the R2 object key of the CBZ/EPUB/PDF to convert.
-          type: string
-      type: object
-    domain.ConvertSegment:
-      properties:
-        chapterId:
-          type: string
-        endPage:
-          type: integer
-        startPage:
-          type: integer
-      type: object
-    domain.ConvertStatus:
-      type: string
-      x-enum-varnames:
-      - ConvertPending
-      - ConvertRunning
-      - ConvertDone
-      - ConvertFailed
     domain.Media:
       properties:
         artists:
@@ -433,10 +367,34 @@ components:
         success:
           type: boolean
       type: object
-    handler.UploadResponse:
+    handler.PresignRequest:
       properties:
-        sourceKey:
+        contentType:
+          description: ContentType binds the required Content-Type of each PUT (default
+            image/avif).
           type: string
+        count:
+          description: Count is how many page upload URLs to mint (1..5000).
+          type: integer
+      type: object
+    handler.RegisterPageItem:
+      properties:
+        height:
+          type: integer
+        index:
+          type: integer
+        r2Key:
+          type: string
+        width:
+          type: integer
+      type: object
+    handler.RegisterPagesRequest:
+      properties:
+        pages:
+          items:
+            $ref: '#/components/schemas/handler.RegisterPageItem'
+          type: array
+          uniqueItems: false
       type: object
     handler.VideoUploadResponse:
       properties:
@@ -466,6 +424,14 @@ components:
           type: string
         state:
           type: string
+      type: object
+    handler.deleteChaptersRequest:
+      properties:
+        ids:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
       type: object
     oidc.clientMetadata:
       properties:
@@ -588,27 +554,22 @@ components:
         name:
           type: string
       type: object
-    service.ConvertResult:
+    service.PresignItem:
       properties:
-        job:
-          $ref: '#/components/schemas/domain.ConvertJob'
-        pages:
+        key:
+          type: string
+        url:
+          type: string
+      type: object
+    service.PresignResult:
+      properties:
+        items:
           items:
-            $ref: '#/components/schemas/domain.Page'
+            $ref: '#/components/schemas/service.PresignItem'
           type: array
           uniqueItems: false
-      type: object
-    service.ProbeResult:
-      properties:
-        format:
-          description: Format overrides format detection when set.
+        prefix:
           type: string
-          x-enum-varnames:
-          - FormatCBZ
-          - FormatEPUB
-          - FormatPDF
-        pageCount:
-          type: integer
       type: object
   securitySchemes:
     BearerAuth:
@@ -776,6 +737,81 @@ paths:
       summary: Liveness probe
       tags:
       - system
+  /v1/admin/chapters/{id}/pages:
+    get:
+      description: Admin-only page listing that exposes each page's raw r2Key alongside
+        a short-lived presigned imageUrl, so an operator can inspect and delete individual
+        artifacts. Requires admin.read.
+      parameters:
+      - description: Chapter ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.AdminPage'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List a chapter's pages with raw R2 keys (admin).
+      tags:
+      - admin
+  /v1/admin/chapters/{id}/pages/{idx}:
+    delete:
+      description: Removes one page (by index) from a chapter and schedules its R2
+        object for async cleanup. Requires admin.write.
+      parameters:
+      - description: Chapter ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - description: Page index
+        in: path
+        name: idx
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Delete a single chapter page and its artifact (admin).
+      tags:
+      - admin
   /v1/admin/sources:
     get:
       responses:
@@ -1039,6 +1075,67 @@ paths:
       summary: Page list (presigned URLs) for a chapter
       tags:
       - reader
+    post:
+      parameters:
+      - description: Chapter ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.RegisterPagesRequest'
+        description: Uploaded pages
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.Page'
+                type: array
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Register browser-uploaded AVIF pages as a chapter's page rows.
+      tags:
+      - convert
+  /v1/chapters/delete:
+    post:
+      description: Batch-capable chapter delete. Accepts an array of ids of any length
+        (a single-element array is a single delete). Deleted pages' R2 artifacts are
+        cleaned up asynchronously. Unknown ids are ignored.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.deleteChaptersRequest'
+        description: Chapter ids
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Delete one or more chapters (and their pages) in one call.
+      tags:
+      - media
   /v1/connections:
     get:
       responses:
@@ -1337,21 +1434,21 @@ paths:
       summary: Complete the OAuth authorization (code + state exchange).
       tags:
       - connection
-  /v1/convert:
+  /v1/convert/presign:
     post:
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/domain.ConvertRequest'
-        description: Conversion request
+              $ref: '#/components/schemas/handler.PresignRequest'
+        description: How many upload URLs to mint
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/service.ConvertResult'
+                $ref: '#/components/schemas/service.PresignResult'
           description: OK
         "400":
           content:
@@ -1359,95 +1456,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/handler.ErrorResponse'
           description: Bad Request
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Unsupported Media Type
       security:
       - BearerAuth: []
-      summary: Convert an archive already in R2 into AVIF pages (stored in R2).
-      tags:
-      - convert
-  /v1/convert/jobs/{id}:
-    get:
-      parameters:
-      - description: Job ID
-        in: path
-        name: id
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/domain.ConvertJob'
-          description: OK
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Not Found
-      security:
-      - BearerAuth: []
-      summary: Get a conversion job's status.
-      tags:
-      - convert
-  /v1/convert/probe:
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/domain.ConvertRequest'
-        description: Probe request (sourceKey required; format optional)
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/service.ProbeResult'
-          description: OK
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Bad Request
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.ErrorResponse'
-          description: Unsupported Media Type
-      security:
-      - BearerAuth: []
-      summary: Count the ordered pages of an uploaded archive without encoding.
-      tags:
-      - convert
-  /v1/convert/upload:
-    post:
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: string
-        description: Target R2 key (defaults to uploads/{uuid})
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/handler.UploadResponse'
-          description: Created
-      security:
-      - BearerAuth: []
-      summary: Upload a CBZ/EPUB/PDF archive into R2 (multipart field "file").
+      summary: Mint a batch of presigned R2 PUT URLs for browser-encoded AVIF pages.
       tags:
       - convert
   /v1/image:

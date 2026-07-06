@@ -517,6 +517,29 @@ func (r *MediaRepo) DeleteChapter(ctx context.Context, id string) error {
 	return r.db.Exec(ctx, `DELETE FROM chapter WHERE id=?1`, id)
 }
 
+// DeletePage removes a single page row identified by its chapter and index.
+func (r *MediaRepo) DeletePage(ctx context.Context, chapterID string, idx int) error {
+	return r.db.Exec(ctx, `DELETE FROM page WHERE chapter_id=?1 AND idx=?2`, chapterID, idx)
+}
+
+// PageKeysForMedia returns the R2 keys of every page across all of a media
+// entry's chapters (used to schedule R2 cleanup when the media is deleted).
+func (r *MediaRepo) PageKeysForMedia(ctx context.Context, mediaID string) ([]string, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT r2_key FROM page
+		 WHERE chapter_id IN (SELECT id FROM chapter WHERE media_id=?1)`, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if k := strVal(row["r2_key"]); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
 // --- taxonomy management (genre/category/author/artist) ---
 
 // ListTaxonomy returns all tags of a kind, ordered by name.

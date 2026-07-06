@@ -18,7 +18,8 @@ func newMediaSvcWithQueue(t *testing.T) (*service.MediaService, *mocks.MockMedia
 	repo := mocks.NewMockMediaRepository(t)
 	store := mocks.NewMockObjectStore(t)
 	cq := mocks.NewMockCoverMirrorQueue(t)
-	return service.NewMediaService(repo, store, cq, "", testPresignTTL), repo, store, cq
+	clq := mocks.NewMockCleanupQueue(t)
+	return service.NewMediaService(repo, store, cq, clq, "", testPresignTTL), repo, store, cq
 }
 
 func TestMediaService_CreateMedia_EnqueuesExternalCover(t *testing.T) {

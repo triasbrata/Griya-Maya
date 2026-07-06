@@ -15,12 +15,12 @@ packages:
       MediaRepository:
       JobRepository:
       ObjectStore:
-      ArchiveConverter:
       ConnectionRepository:
       OAuthClient:
       StateStore:
       SourceRepository:
       CoverMirrorQueue:
+      CleanupQueue:
   github.com/triasbrata/mihon-manga-server/internal/handler:
     interfaces:
       MediaService:
