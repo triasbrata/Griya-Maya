@@ -19,6 +19,7 @@ packages:
       OAuthClient:
       StateStore:
       SourceRepository:
+      AdRepository:
       CoverMirrorQueue:
       CleanupQueue:
   github.com/triasbrata/mihon-manga-server/internal/handler:
@@ -30,6 +31,7 @@ packages:
       NovelService:
       ConnectionService:
       SourceService:
+      AdService:
   github.com/triasbrata/mihon-manga-server/internal/repository/d1:
     interfaces:
       Querier:

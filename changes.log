@@ -539,3 +539,88 @@ for the required entry format.
   provided as a shared fx value. Operator action: provision a "page-cleanup" queue
   with an http_pull consumer and set CLEANUP_QUEUE_ID (wrangler.jsonc + secret/var);
   empty leaves cleanup disabled (deletes still succeed, objects remain).
+
+## 2026-07-06 — Refresh-token rotation reuse-tolerance + apply-all D1 migrations
+- What:
+  - Fixed the "login mulu" refresh-token rotation race. Rotation no longer
+    hard-deletes the old row (non-atomic delete-then-insert); it atomically
+    *claims* the rotation via `UPDATE ... WHERE superseded_by IS NULL RETURNING id`
+    so concurrent redemptions serialize. Losers — and any duplicate redemption
+    within a 30s grace window — receive the winner's already-minted successor
+    instead of invalid_grant, so the iOS app's parallel post-expiry requests never
+    sign the user out. Redeeming a superseded token after the grace window is
+    treated as reuse/theft and revokes the chain (RFC 6819 5.2.2.3 / OAuth 2.1).
+  - Fixed `make d1-migrate` (Task B): it only applied 0001_init.sql, so every
+    later migration — including the 0006 `source` seed that provisions the enabled
+    `griyamedia` source `/v1/sources` needs — was never guaranteed to run. It now
+    applies all migrations/*.sql in order (D1_MIGRATE_FLAGS=--remote for prod).
+- Why: iOS users repeatedly forced to re-login (rotation race) and `/v1/sources`
+  returning empty (source table had no enabled rows because 0006's seed never ran).
+- Files: internal/oidc/storage.go (rotateRefreshToken/mintForSuccessor/
+  claimRotation/revokeRefreshChain replace renewRefreshToken; refreshTokenByValue
+  reads superseded_by/at), internal/oidc/models.go (RefreshToken.SupersededBy/At),
+  migrations/0008_refresh_token_supersede.sql (new), Makefile (d1-migrate).
+- Tests: go build ./... && go vet ./... clean; go test ./... → 297 pass. internal/oidc
+  has no unit-test target (test-exempt infra pkg, no existing test pattern), so the
+  rotation logic ships without new unit tests — noted as debt.
+- Ops: apply 0008 + re-apply the 0006 seed to the deployed DB:
+  `wrangler d1 execute manga --remote --file=migrations/0008_refresh_token_supersede.sql`
+  `wrangler d1 execute manga --remote --file=migrations/0006_sources.sql` (idempotent).
+  Alternatively enable a source at runtime: POST /v1/admin/sources (scope admin.write)
+  body {"id":"griyamedia","name":"GriyaMedia","lang":"en","enabled":true}.
+
+## 2026-07-06 — Fix leaked CDN-base comment producing unfetchable page image URLs
+- What:
+  - Root cause: `.env` had `R2_PUBLIC_BASE_URL=    # e.g. https://cdn.example.com
+    (empty => proxy via /v1/image)`. godotenv does NOT strip an inline comment when
+    the value is empty, so it captured the whole `# e.g. …` string as the value.
+    `store.PublicURL(key)` then prepended it to every page key, yielding URLs like
+    `https://cdn.example.com (empty => proxy via /v1/image)/pages/<id>/page-0001.avif`
+    → iOS load failed with NSURLErrorDomain -1002 "unsupported URL". (Hits local/
+    tunnel runs that load .env; the deployed container image doesn't ship .env, its
+    R2_PUBLIC_BASE_URL comes from the Worker/wrangler.jsonc which is "".)
+  - Config fix: `.env` + `.env.example` now set `R2_PUBLIC_BASE_URL=` genuinely empty
+    with the explanatory comment moved to its OWN line.
+  - Hardening: new `httpBaseURL()` in config sanitizes R2_PUBLIC_BASE_URL — a value
+    that isn't a valid absolute http(s) URL (empty, whitespace, a stray comment/
+    placeholder, scheme-less) collapses to "" so page URLs fall back to the private
+    presigned path. A leaked comment can never again become a real base.
+- Why: iOS reader every page failed with unsupported-URL; the CDN base placeholder
+  comment leaked in as the actual base URL.
+- Files: internal/config/config.go (httpBaseURL + apply to R2.PublicBaseURL, net/url
+  import), internal/config/config_test.go (new, 11 cases), .env, .env.example.
+- Tests: go build ./... && go vet ./internal/config clean; new config test 11/11 pass;
+  go test ./internal/... → 308 pass.
+- Ops: code+config only. For the DEPLOYED server, no redeploy is needed unless a
+  bad R2_PUBLIC_BASE_URL was set as a Worker var/secret — verify it is empty:
+  `wrangler secret list` / check wrangler.jsonc vars (already "") and any
+  `wrangler secret put R2_PUBLIC_BASE_URL` override. For local dev via tunnel the
+  fixed `.env` takes effect on next `make run-server`.
+
+## 2026-07-07 — House ads vertical (reader listing + admin CRUD)
+- What:
+  - New house-ads vertical so the iOS reader can interleave server-owner creatives
+    between chapter pages, alongside client-side AdMob. Reader endpoint
+    `GET /v1/ads?placement=<key>` (gated manga.read) returns active ads with
+    short-lived presigned R2 image URLs; camelCase DTO
+    `{id,imageUrl,clickUrl,weight,placement,aspectRatio,width,height}` matching the
+    iOS RemoteReaderAdRepository contract (placement key `reader_interstitial`).
+  - Admin CRUD under `/v1/admin/ads` mirroring the sources pattern: GET list/get
+    (admin.read), POST/PUT/DELETE + `POST /v1/admin/ads/presign` (admin.write). The
+    presign mints a single direct-to-R2 PUT URL under an `ads/` key; create/update
+    persist the returned r2Key. Creatives follow the same private-R2 + presign path
+    as page bytes (bucket stays private).
+- Why: coordinator-approved server side of the reader house-ads feature (iOS repo
+  untouched). Admin UI screens in griyamedia-admin are a FOLLOW-UP (separate repo).
+- Files: internal/domain/ad.go (Ad/StoredAd/AdWriteRequest), internal/service/{ad_service.go,
+  ports.go (AdRepository)}, internal/handler/{ad_handler.go,ports.go (AdService)},
+  internal/repository/d1/ad_repo.go, migrations/0009_ads.sql, internal/server/router.go
+  (routes + RouterParams.Ad), internal/app/module.go (AdRepo/AdService/AdHandler wiring
+  + newAdService), .mockery.yaml (AdRepository/AdService), regenerated mocks + swagger.
+  Tests: internal/service/ad_service_test.go, internal/handler/ad_handler_test.go,
+  internal/repository/d1/ad_repo_test.go.
+- Tests: go build ./... + go vet ./... clean; go test ./... → 342 pass. Coverage on
+  gated packages all ≥80% (up from baseline): domain 93.9%, service 89.1%, handler
+  87.6%, d1 83.9%. `make mocks` + `make docs` regenerated.
+- Ops: apply migration before deploy — `make d1-migrate` or
+  `wrangler d1 execute manga --file=migrations/0009_ads.sql`. No new env/secrets.

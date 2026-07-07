@@ -49,6 +49,21 @@ type SourceService interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// AdService is the house-ad listing + management port the AdHandler depends on
+// (implemented by *service.AdService).
+type AdService interface {
+	// ListActive returns the reader-facing active ads (presigned image URLs).
+	ListActive(ctx context.Context, placement string) ([]domain.Ad, error)
+	// List returns every ad (active and inactive) for the admin surface.
+	List(ctx context.Context) ([]domain.StoredAd, error)
+	Get(ctx context.Context, id string) (domain.StoredAd, error)
+	Create(ctx context.Context, req domain.AdWriteRequest) (domain.StoredAd, error)
+	Update(ctx context.Context, id string, req domain.AdWriteRequest) (domain.StoredAd, error)
+	Delete(ctx context.Context, id string) error
+	// PresignUpload mints a presigned R2 PUT URL for a new creative.
+	PresignUpload(ctx context.Context, contentType string) (service.PresignItem, error)
+}
+
 // TaxonomyService is the taxonomy-management port the TaxonomyHandler depends on
 // (implemented by *service.TaxonomyService).
 type TaxonomyService interface {

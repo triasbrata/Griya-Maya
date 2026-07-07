@@ -157,6 +157,14 @@ type RefreshToken struct {
 	Expiration    time.Time
 	Scopes        []string
 	AccessToken   string // Token.ID this refresh token last minted
+
+	// SupersededBy is the successor token value set when this token is rotated;
+	// empty while the token is still the active one. SupersededAt records when
+	// the rotation happened, so a superseded token can stay redeemable for a
+	// short grace window (concurrent-redemption tolerance) yet be flagged as
+	// reuse once that window passes.
+	SupersededBy string
+	SupersededAt time.Time
 }
 
 // RefreshTokenRequest wraps a RefreshToken to satisfy op.RefreshTokenRequest.

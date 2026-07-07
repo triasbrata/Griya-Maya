@@ -7,6 +7,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -165,7 +166,7 @@ func Load() (Config, error) {
 			Bucket:          env("R2_BUCKET", "manga"),
 			AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
 			SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
-			PublicBaseURL:   os.Getenv("R2_PUBLIC_BASE_URL"),
+			PublicBaseURL:   httpBaseURL(os.Getenv("R2_PUBLIC_BASE_URL")),
 			PresignTTL:      time.Duration(envInt("PRESIGN_TTL_SEC", 3600)) * time.Second,
 		},
 		KV: KVConfig{
@@ -228,6 +229,35 @@ func (c Config) validate() error {
 		return fmt.Errorf("CONNECTIONS_ENC_KEY must be exactly 32 bytes, got %d", len(c.Connections.EncKey))
 	}
 	return nil
+}
+
+// httpBaseURL returns raw (trimmed, without a trailing slash) only when it is a
+// valid *absolute* http(s) URL; anything else collapses to "". This is a
+// defensive gate for public-domain base URLs (e.g. R2_PUBLIC_BASE_URL): if the
+// value is empty, whitespace, a stray config comment/placeholder, or otherwise
+// malformed, we return "" so downstream URL builders fall back to the private
+// presigned / proxy path instead of blindly prepending garbage.
+//
+// This exists because a leaked inline comment once made the base literally
+// `# e.g. https://cdn.example.com (empty => proxy via /v1/image)`, which the
+// server then prepended to every page key, producing unfetchable URLs on the
+// client (NSURLErrorDomain -1002 "unsupported URL"). A base like that can never
+// silently become real again: it has no scheme (and contains spaces), so it is
+// rejected here and treated as empty.
+func httpBaseURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	// A real URL has no whitespace or control characters.
+	if strings.ContainsAny(s, " \t\r\n") {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return strings.TrimRight(s, "/")
 }
 
 func env(key, def string) string {

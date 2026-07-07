@@ -65,6 +65,7 @@ var Module = fx.Options(
 		fx.Annotate(d1.NewJobRepo, fx.As(new(service.JobRepository))),
 		fx.Annotate(d1.NewConnectionRepo, fx.As(new(service.ConnectionRepository))),
 		fx.Annotate(d1.NewSourceRepo, fx.As(new(service.SourceRepository))),
+		fx.Annotate(d1.NewAdRepo, fx.As(new(service.AdRepository))),
 		fx.Annotate(r2.New,
 			fx.As(new(service.ObjectStore)), fx.As(new(covermirror.ObjectPutter)),
 			fx.As(new(cleanup.ObjectDeleter))),
@@ -86,6 +87,7 @@ var Module = fx.Options(
 	fx.Provide(
 		fx.Annotate(newMediaService, fx.As(new(handler.MediaService))),
 		fx.Annotate(service.NewSourceService, fx.As(new(handler.SourceService))),
+		fx.Annotate(newAdService, fx.As(new(handler.AdService))),
 		fx.Annotate(service.NewTaxonomyService, fx.As(new(handler.TaxonomyService))),
 		fx.Annotate(service.NewConvertService, fx.As(new(handler.ConvertService))),
 		fx.Annotate(newVideoService, fx.As(new(handler.VideoService))),
@@ -98,6 +100,7 @@ var Module = fx.Options(
 		handler.NewHealthHandler,
 		handler.NewMediaHandler,
 		handler.NewSourceHandler,
+		handler.NewAdHandler,
 		handler.NewTaxonomyHandler,
 		handler.NewConvertHandler,
 		handler.NewVideoHandler,
@@ -154,6 +157,12 @@ func registerCleanup(lc fx.Lifecycle, w *cleanup.Worker) {
 		OnStart: func(context.Context) error { w.Start(); return nil },
 		OnStop:  func(context.Context) error { w.Stop(); return nil },
 	})
+}
+
+// newAdService injects the R2 store and presign TTL from config so the reader's
+// house-ad image URLs share the page-URL lifetime.
+func newAdService(repo service.AdRepository, store service.ObjectStore, c config.Config) *service.AdService {
+	return service.NewAdService(repo, store, c.R2.PresignTTL)
 }
 
 // newVideoService injects the public base URL from config.

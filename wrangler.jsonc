@@ -48,7 +48,7 @@
     "CF_ACCOUNT_ID": "f0dbb863dc1cdc6b131cc45039aaaf80",
     "KV_NAMESPACE_ID": "f4c77dd0ad4f4ce3a94de30c9efdcf7d",
     "R2_BUCKET": "manga",
-    "R2_PUBLIC_BASE_URL": "",
+    "R2_PUBLIC_BASE_URL": "https://image.brata.cloud",
     "PRESIGN_TTL_SEC": "3600",
     "OIDC_ISSUER": "https://mihon-manga-server.example.workers.dev",
     "OIDC_REQUIRED_SCOPE": "manga.write",

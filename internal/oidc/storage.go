@@ -250,16 +250,8 @@ func (s *Storage) CreateAccessAndRefreshTokens(ctx context.Context, request op.T
 		return accessToken.ID, refreshToken, accessToken.Expiration, nil
 	}
 
-	// Refresh token request: rotate.
-	newRefreshToken := uuid.NewString()
-	accessToken, err := s.accessToken(ctx, applicationID, newRefreshToken, request.GetSubject(), request.GetAudience(), request.GetScopes())
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	if err := s.renewRefreshToken(ctx, currentRefreshToken, newRefreshToken, accessToken.ID); err != nil {
-		return "", "", time.Time{}, err
-	}
-	return accessToken.ID, newRefreshToken, accessToken.Expiration, nil
+	// Refresh token request: rotate, tolerating concurrent redemptions.
+	return s.rotateRefreshToken(ctx, request, currentRefreshToken, applicationID)
 }
 
 func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken string) (op.RefreshTokenRequest, error) {
@@ -521,28 +513,115 @@ func (s *Storage) createRefreshToken(ctx context.Context, accessToken *Token, am
 	return rt.Token, nil
 }
 
-func (s *Storage) renewRefreshToken(ctx context.Context, currentToken, newToken, newAccessToken string) error {
+// refreshRotationGrace is how long a just-rotated (superseded) refresh token
+// stays redeemable. Parallel or retried redemptions of the same token within
+// this window receive the winning rotation's successor instead of an
+// invalid_grant, so the iOS app — which fires several gated requests in parallel
+// that all 401 the moment the 1h access token expires — is never spuriously
+// signed out. Kept short so a genuinely leaked token can't be replayed for long.
+const refreshRotationGrace = 30 * time.Second
+
+// rotateRefreshToken rotates a refresh token in a way that tolerates concurrent
+// redemptions. Exactly one caller atomically "claims" the rotation (races
+// serialize on an `UPDATE ... WHERE superseded_by IS NULL`); concurrent losers,
+// and any duplicate redemption within refreshRotationGrace, are handed the
+// winner's already-minted successor. A redemption of a superseded token AFTER
+// the grace window is treated as reuse/theft and revokes the chain
+// (RFC 6819 5.2.2.3 / OAuth 2.1 refresh-token rotation).
+func (s *Storage) rotateRefreshToken(ctx context.Context, request op.TokenRequest, currentToken, applicationID string) (string, string, time.Time, error) {
 	rt, err := s.refreshTokenByValue(ctx, currentToken)
 	if err != nil {
-		return err
+		return "", "", time.Time{}, err
 	}
 	if rt == nil {
-		return fmt.Errorf("invalid refresh token")
+		return "", "", time.Time{}, fmt.Errorf("invalid refresh token")
 	}
 	if rt.Expiration.Before(time.Now()) {
 		_ = s.d1.Exec(ctx, `DELETE FROM oidc_refresh_token WHERE id = ?1`, rt.ID)
-		return fmt.Errorf("expired refresh token")
+		return "", "", time.Time{}, fmt.Errorf("expired refresh token")
 	}
-	// Delete the old access token and rotate the refresh token (RFC 6819 5.2.2.3).
+
+	// Already rotated by a concurrent or retried redemption?
+	if rt.SupersededBy != "" {
+		if time.Since(rt.SupersededAt) <= refreshRotationGrace {
+			return s.mintForSuccessor(ctx, request, applicationID, rt.SupersededBy)
+		}
+		// Reuse of a long-superseded token: assume theft, burn the chain.
+		_ = s.revokeRefreshChain(ctx, rt)
+		return "", "", time.Time{}, fmt.Errorf("refresh token reuse detected")
+	}
+
+	// Atomically claim the rotation; only one concurrent caller wins.
+	newToken := uuid.NewString()
+	won, err := s.claimRotation(ctx, rt.ID, newToken)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if !won {
+		// Lost the race: hand back the winner's successor.
+		if reread, rerr := s.refreshTokenByValue(ctx, currentToken); rerr == nil && reread != nil && reread.SupersededBy != "" {
+			return s.mintForSuccessor(ctx, request, applicationID, reread.SupersededBy)
+		}
+		return "", "", time.Time{}, fmt.Errorf("invalid refresh token")
+	}
+
+	// Won: mint the successor's access token, retire the old one, persist the
+	// successor row. The superseded predecessor is intentionally kept (not
+	// deleted) so late duplicate redemptions land in the grace/reuse branch
+	// above; it lapses on its own expiration TTL.
+	accessToken, err := s.accessToken(ctx, applicationID, newToken, request.GetSubject(), request.GetAudience(), request.GetScopes())
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
 	_ = s.kv.Delete(ctx, kvTokenPrefix+rt.AccessToken)
-	if err := s.d1.Exec(ctx, `DELETE FROM oidc_refresh_token WHERE id = ?1`, rt.ID); err != nil {
-		return err
-	}
 	rt.ID = newToken
 	rt.Token = newToken
 	rt.Expiration = time.Now().Add(s.refreshTTL)
-	rt.AccessToken = newAccessToken
-	return s.insertRefreshToken(ctx, rt)
+	rt.AccessToken = accessToken.ID
+	rt.SupersededBy = ""
+	rt.SupersededAt = time.Time{}
+	if err := s.insertRefreshToken(ctx, rt); err != nil {
+		return "", "", time.Time{}, err
+	}
+	return accessToken.ID, newToken, accessToken.Expiration, nil
+}
+
+// mintForSuccessor issues a fresh access token bound to an already-rotated
+// successor refresh token and returns that successor, so a concurrent or retried
+// redemption of the predecessor stays authenticated on the current chain.
+func (s *Storage) mintForSuccessor(ctx context.Context, request op.TokenRequest, applicationID, successorToken string) (string, string, time.Time, error) {
+	accessToken, err := s.accessToken(ctx, applicationID, successorToken, request.GetSubject(), request.GetAudience(), request.GetScopes())
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return accessToken.ID, successorToken, accessToken.Expiration, nil
+}
+
+// claimRotation atomically marks a refresh token superseded, returning whether
+// this caller made the transition. Concurrent rotations serialize on the
+// `superseded_by IS NULL` guard so exactly one wins. RETURNING surfaces the
+// affected-row count, since the D1 REST client only exposes result rows.
+func (s *Storage) claimRotation(ctx context.Context, id, successor string) (bool, error) {
+	rows, err := s.d1.Query(ctx,
+		`UPDATE oidc_refresh_token
+		    SET superseded_by = ?2, superseded_at = ?3
+		  WHERE id = ?1 AND (superseded_by IS NULL OR superseded_by = '')
+		 RETURNING id`,
+		id, successor, time.Now().Unix())
+	if err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
+}
+
+// revokeRefreshChain deletes a reused token and its known successor, forcing the
+// client to re-authenticate after suspected token theft.
+func (s *Storage) revokeRefreshChain(ctx context.Context, rt *RefreshToken) error {
+	if rt.SupersededBy != "" {
+		_ = s.d1.Exec(ctx, `DELETE FROM oidc_refresh_token WHERE id = ?1`, rt.SupersededBy)
+	}
+	_ = s.kv.Delete(ctx, kvTokenPrefix+rt.AccessToken)
+	return s.d1.Exec(ctx, `DELETE FROM oidc_refresh_token WHERE id = ?1`, rt.ID)
 }
 
 func (s *Storage) insertRefreshToken(ctx context.Context, rt *RefreshToken) error {
@@ -557,7 +636,8 @@ func (s *Storage) insertRefreshToken(ctx context.Context, rt *RefreshToken) erro
 
 func (s *Storage) refreshTokenByValue(ctx context.Context, token string) (*RefreshToken, error) {
 	rows, err := s.d1.Query(ctx,
-		`SELECT id, token, client_id, user_id, scopes, audience, amr, auth_time, expiration
+		`SELECT id, token, client_id, user_id, scopes, audience, amr, auth_time, expiration,
+		        superseded_by, superseded_at
 		 FROM oidc_refresh_token WHERE token = ?1`, token)
 	if err != nil {
 		return nil, err
@@ -576,6 +656,8 @@ func (s *Storage) refreshTokenByValue(ctx context.Context, token string) (*Refre
 		AMR:           jsonToStrings(row["amr"]),
 		AuthTime:      timeVal(row["auth_time"]),
 		Expiration:    timeVal(row["expiration"]),
+		SupersededBy:  strVal(row["superseded_by"]),
+		SupersededAt:  timeVal(row["superseded_at"]),
 	}, nil
 }
 

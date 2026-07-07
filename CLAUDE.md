@@ -146,6 +146,7 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 - `health_handler.go` — `/healthz`.
 - `media_handler.go` — catalog (`popular/latest/search/recommendations/genres/categories/details/chapters`), reader (`pages`), gated `image` proxy, and media/chapter CRUD.
 - `taxonomy_handler.go` — genre/category/author/artist CRUD via `/v1/taxonomies/{kind}`.
+- `ad_handler.go` — house ads: reader `List` (`/v1/ads`, manga.read) + admin CRUD/`presign` (`/v1/admin/ads`, admin.read/write).
 - `convert_handler.go` — `upload` / `convert` / `jobs/:id`.
 - `video_handler.go` — HLS `upload` / `register` / `stream`.
 - `novel_handler.go` — novel text `register`.
@@ -158,12 +159,14 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 - `convert_service.go` — orchestrates archive → AVIF → R2 → D1 pages.
 - `video_service.go` — registers uploaded HLS bundles as chapter pages.
 - `novel_service.go` — stores/inlines novel text.
+- `ad_service.go` — house ads: reader `ListActive` (presigns creative R2 keys), admin CRUD + `PresignUpload`.
 - `mocks/` — **generated** repository/store mocks.
 
 **Persistence — `internal/repository`**
 - `d1/client.go` — D1 REST client + `Querier` usage; row-value decoding.
 - `d1/media_repo.go` — catalog reads (list/search/recommend/genres/categories/get/chapters/pages), filter→SQL builder (type column + genre/category EXISTS joins), media/chapter writes, and taxonomy CRUD (`taxTableFor` routes the 4 kinds). Taxonomies reassembled per-row via `group_concat(...,char(31))` subqueries.
 - `d1/job_repo.go` — convert-job lifecycle + `ReplacePages`.
+- `d1/ad_repo.go` — house-ad persistence (`ads` table): list (active/placement filter), get, create/update/delete.
 - `d1/ports.go` — `Querier` interface (mocked for repo tests).
 - `d1/mocks/` — **generated**.
 - `kv/client.go` — KV REST client (TTL puts/gets) for OIDC state.
@@ -183,6 +186,7 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 **Domain — `internal/domain`** (pure types, no deps)
 - `manga.go` — the unified **`Media`** entity (+ `MediaType` manga|video|novel), `Chapter` (`MediaID`), `Page`, `StoredPage`, `MediaPage`, `CatalogFilter` (type/genre/category filters), `Taxonomy`/`TaxonomyKind`, `MediaWriteRequest`/`ChapterWriteRequest`/`TaxonomyWriteRequest`, page-kind consts.
 - `convert.go` — `ConvertJob`, `ConvertRequest` (`MediaID`), `ArchiveFormat`, `ConvertStatus`.
+- `ad.go` — house-ad types: `Ad` (reader DTO, presigned imageUrl), `StoredAd` (persisted, r2Key), `AdWriteRequest`.
 - `novel.go` — novel request/types. `video.go` — video request/types.
 
 **Conversion engine — `internal/convert`** (infra; heavy, partly CGO)

@@ -85,6 +85,17 @@ type SourceRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// AdRepository persists house-ad creatives (implemented by d1.AdRepo).
+type AdRepository interface {
+	// List returns ads ordered by weight (desc). activeOnly restricts to active
+	// ads (the reader listing); a non-empty placement filters to that placement.
+	List(ctx context.Context, activeOnly bool, placement string) ([]domain.StoredAd, error)
+	Get(ctx context.Context, id string) (domain.StoredAd, error)
+	Create(ctx context.Context, a domain.StoredAd) error
+	Update(ctx context.Context, a domain.StoredAd) error
+	Delete(ctx context.Context, id string) error
+}
+
 // ObjectStore is the blob port (implemented by r2.Store).
 type ObjectStore interface {
 	Get(ctx context.Context, key string) ([]byte, string, error)

@@ -37,6 +37,7 @@ type RouterParams struct {
 	Health     *handler.HealthHandler
 	Media      *handler.MediaHandler
 	Source     *handler.SourceHandler
+	Ad         *handler.AdHandler
 	Taxonomy   *handler.TaxonomyHandler
 	Convert    *handler.ConvertHandler
 	Video      *handler.VideoHandler
@@ -131,6 +132,10 @@ func New(p RouterParams) *server.Hertz {
 
 		// Enabled source directory for the reader (end client).
 		read.GET("/sources", p.Source.List)
+
+		// Active house ads for the reader (interleaved between pages). Each
+		// creative's imageUrl is a presigned R2 URL, so the read gate applies.
+		read.GET("/ads", p.Ad.List)
 	}
 
 	// Admin surface (gated separately from catalog scopes): source management.
@@ -141,6 +146,9 @@ func New(p RouterParams) *server.Hertz {
 		adminRead.GET("/sources/:id", p.Source.Get)
 		// Inspect a chapter's pages with raw R2 keys (for artifact management).
 		adminRead.GET("/chapters/:id/pages", p.Media.AdminChapterPages)
+		// House-ad management reads (full set incl. inactive, raw R2 keys).
+		adminRead.GET("/ads", p.Ad.AdminList)
+		adminRead.GET("/ads/:id", p.Ad.Get)
 	}
 	adminWrite := h.Group("/v1/admin", p.OIDC.MiddlewareScope(oidc.ScopeAdminWrite))
 	{
@@ -149,6 +157,12 @@ func New(p RouterParams) *server.Hertz {
 		adminWrite.DELETE("/sources/:id", p.Source.Delete)
 		// Delete a single page + its R2 artifact.
 		adminWrite.DELETE("/chapters/:id/pages/:idx", p.Media.AdminDeleteChapterPage)
+		// House-ad management writes. Presign mints a direct-to-R2 creative upload
+		// URL; create/update then persist the resulting r2Key.
+		adminWrite.POST("/ads", p.Ad.Create)
+		adminWrite.PUT("/ads/:id", p.Ad.Update)
+		adminWrite.DELETE("/ads/:id", p.Ad.Delete)
+		adminWrite.POST("/ads/presign", p.Ad.Presign)
 	}
 
 	// Catalog management (gated by manga.write): create/update/delete media and

@@ -1,5 +1,41 @@
 components:
   schemas:
+    domain.Ad:
+      properties:
+        aspectRatio:
+          type: number
+        clickUrl:
+          type: string
+        height:
+          type: integer
+        id:
+          type: string
+        imageUrl:
+          type: string
+        placement:
+          type: string
+        weight:
+          type: integer
+        width:
+          type: integer
+      type: object
+    domain.AdWriteRequest:
+      properties:
+        active:
+          type: boolean
+        clickUrl:
+          type: string
+        height:
+          type: integer
+        placement:
+          type: string
+        r2Key:
+          type: string
+        weight:
+          type: integer
+        width:
+          type: integer
+      type: object
     domain.AdminPage:
       properties:
         height:
@@ -328,6 +364,27 @@ components:
         name:
           type: string
       type: object
+    domain.StoredAd:
+      properties:
+        active:
+          type: boolean
+        clickUrl:
+          type: string
+        createdAt:
+          type: string
+        height:
+          type: integer
+        id:
+          type: string
+        placement:
+          type: string
+        r2Key:
+          type: string
+        weight:
+          type: integer
+        width:
+          type: integer
+      type: object
     domain.Taxonomy:
       properties:
         id:
@@ -357,6 +414,13 @@ components:
           description: Width / Height are the video's pixel dimensions (optional,
             informational).
           type: integer
+      type: object
+    handler.AdPresignRequest:
+      properties:
+        contentType:
+          description: ContentType binds the required Content-Type of the PUT (default
+            image/avif).
+          type: string
       type: object
     handler.ErrorResponse:
       properties:
@@ -737,6 +801,174 @@ paths:
       summary: Liveness probe
       tags:
       - system
+  /v1/admin/ads:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.StoredAd'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List all house ads (admin)
+      tags:
+      - ads
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.AdWriteRequest'
+        description: New ad
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.StoredAd'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Create a house ad (admin)
+      tags:
+      - ads
+  /v1/admin/ads/{id}:
+    delete:
+      parameters:
+      - description: Ad ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Delete a house ad (admin)
+      tags:
+      - ads
+    get:
+      parameters:
+      - description: Ad ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.StoredAd'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Get a house ad (admin)
+      tags:
+      - ads
+    put:
+      parameters:
+      - description: Ad ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.AdWriteRequest'
+        description: Updated fields
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.StoredAd'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Update a house ad (admin)
+      tags:
+      - ads
+  /v1/admin/ads/presign:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.AdPresignRequest'
+        description: Upload content type
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/service.PresignItem'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Mint a presigned creative-upload URL (admin)
+      tags:
+      - ads
   /v1/admin/chapters/{id}/pages:
     get:
       description: Admin-only page listing that exposes each page's raw r2Key alongside
@@ -954,6 +1186,42 @@ paths:
       summary: Update a source (admin)
       tags:
       - sources
+  /v1/ads:
+    get:
+      description: Active house-ad creatives the reader interleaves between pages.
+        Each imageUrl is a short-lived presigned R2 URL. Gated by manga.read.
+      parameters:
+      - description: Placement key (e.g. reader_interstitial)
+        in: query
+        name: placement
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.Ad'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List active house ads
+      tags:
+      - ads
   /v1/chapters/{id}:
     delete:
       parameters:

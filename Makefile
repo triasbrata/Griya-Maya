@@ -59,9 +59,18 @@ docs:
 docker:
 	docker build -t mihon-manga-server .
 
-# Apply the D1 schema (requires wrangler + a created DB named "manga").
+# Apply every D1 migration in order (requires wrangler + a created DB named
+# "manga"). Migrations are forward-only; the schema ones are idempotent
+# (CREATE ... IF NOT EXISTS, INSERT OR IGNORE), so a full replay provisions a
+# fresh DB cleanly. Pass D1_MIGRATE_FLAGS=--remote to target the deployed DB
+# (default targets the local one). NOTE: ADD COLUMN migrations are not
+# re-runnable against a DB that already has them — apply a single new migration
+# with `wrangler d1 execute manga --file=migrations/000N_*.sql` instead.
 d1-migrate:
-	wrangler d1 execute manga --file=migrations/0001_init.sql
+	@for f in $$(ls migrations/*.sql | sort); do \
+		echo "==> applying $$f"; \
+		wrangler d1 execute manga $(D1_MIGRATE_FLAGS) --file=$$f || exit 1; \
+	done
 
 deploy:
 	wrangler deploy
