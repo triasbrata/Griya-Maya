@@ -22,24 +22,35 @@ func sourceRow(id string, enabled int) map[string]any {
 func TestSourceRepo_List(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &SourceRepo{db: q}
-	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT")).
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT id, name")).
 		Return([]map[string]any{sourceRow("a", 1), sourceRow("b", 1)}, nil)
+	// Distinct media types are folded in from a single grouped scan. Source "a"
+	// carries manga+novel; "b" has no media (no rows) so stays without MediaTypes.
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT source_id, type FROM media")).
+		Return([]map[string]any{
+			{"source_id": "a", "type": "manga"},
+			{"source_id": "a", "type": "novel"},
+		}, nil)
 	got, err := repo.List(context.Background(), false)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.Equal(t, "a", got[0].ID)
 	assert.True(t, got[0].Enabled)
+	assert.Equal(t, []string{"manga", "novel"}, got[0].MediaTypes)
+	assert.Nil(t, got[1].MediaTypes)
 }
 
 func TestSourceRepo_List_EnabledOnlyFilters(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &SourceRepo{db: q}
 	var gotSQL string
-	q.EXPECT().Query(mock.Anything, mock.Anything).RunAndReturn(
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT id, name")).RunAndReturn(
 		func(_ context.Context, sql string, _ ...any) ([]map[string]any, error) {
 			gotSQL = sql
 			return nil, nil
 		})
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT source_id, type FROM media")).
+		Return(nil, nil)
 	_, err := repo.List(context.Background(), true)
 	require.NoError(t, err)
 	assert.Contains(t, gotSQL, "enabled = 1")

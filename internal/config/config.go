@@ -79,12 +79,22 @@ type D1Config struct {
 	APIToken   string
 }
 
-// R2Config addresses a Cloudflare R2 bucket via the S3-compatible API.
+// R2Config addresses an S3-compatible object store. By default it targets a
+// Cloudflare R2 bucket, but setting Endpoint (+ optionally Region) points the
+// same client at any S3-compatible backend such as MinIO for local/self-hosted
+// deployments.
 type R2Config struct {
 	AccountID       string
 	Bucket          string
 	AccessKeyID     string
 	SecretAccessKey string
+	// Endpoint overrides the S3 API base URL. Empty targets R2 (derived from
+	// AccountID); set it to a MinIO/S3 endpoint like http://localhost:9000 to
+	// use another backend.
+	Endpoint string
+	// Region is the S3 signing region. Empty defaults to "auto" (R2). MinIO
+	// typically expects "us-east-1" unless configured otherwise.
+	Region string
 	// PublicBaseURL is the R2 public/custom-domain base used to build page URLs
 	// (e.g. https://cdn.example.com). Empty (recommended) keeps the bucket
 	// private and page URLs are minted as short-lived presigned links instead.
@@ -166,6 +176,8 @@ func Load() (Config, error) {
 			Bucket:          env("R2_BUCKET", "manga"),
 			AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
 			SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+			Endpoint:        os.Getenv("S3_ENDPOINT"),
+			Region:          os.Getenv("S3_REGION"),
 			PublicBaseURL:   httpBaseURL(os.Getenv("R2_PUBLIC_BASE_URL")),
 			PresignTTL:      time.Duration(envInt("PRESIGN_TTL_SEC", 3600)) * time.Second,
 		},

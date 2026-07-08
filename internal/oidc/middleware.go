@@ -32,7 +32,7 @@ func (p *Provider) MiddlewareScope(scope string) app.HandlerFunc {
 
 // MiddlewareTaxonomyWrite gates taxonomy mutations on a per-kind write scope
 // (taksonomi.<kind>.write) resolved from the :kind path param, so e.g. editing
-// genres needs taksonomi.genres.write. Unknown kinds resolve to no scope and are
+// categories needs taksonomi.categories.write. Unknown kinds resolve to no scope and are
 // left to the handler's 404 (there is nothing to authorize for a kind that does
 // not exist).
 func (p *Provider) MiddlewareTaxonomyWrite() app.HandlerFunc {

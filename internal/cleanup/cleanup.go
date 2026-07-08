@@ -32,9 +32,22 @@ func (p *Producer) Enqueue(ctx context.Context, keys []string) error {
 	return p.q.Send(ctx, domain.PageCleanupJob{Keys: keys})
 }
 
-// ObjectDeleter batch-deletes R2 objects (implemented by r2.Store).
+// EnqueuePrefixes pushes a cleanup job that deletes every object under each
+// prefix (recursive). Used for HLS video bundles, where only the playlist key is
+// recorded but the whole hls/{id}/ directory must go. No-op when there are no
+// prefixes or the queue is off.
+func (p *Producer) EnqueuePrefixes(ctx context.Context, prefixes []string) error {
+	if len(prefixes) == 0 || !p.q.Configured() {
+		return nil
+	}
+	return p.q.Send(ctx, domain.PageCleanupJob{Prefixes: prefixes})
+}
+
+// ObjectDeleter batch-deletes R2 objects and lists keys under a prefix
+// (implemented by r2.Store).
 type ObjectDeleter interface {
 	DeleteObjects(ctx context.Context, keys []string) error
+	ListKeys(ctx context.Context, prefix string) ([]string, error)
 }
 
 // Worker consumes page-cleanup jobs from the queue's http_pull consumer.
@@ -110,15 +123,31 @@ func (w *Worker) loop(ctx context.Context) {
 // process returns true to ack (done or unrecoverable) and false to retry.
 func (w *Worker) process(ctx context.Context, m queue.Message) bool {
 	var job domain.PageCleanupJob
-	if err := json.Unmarshal(m.Body, &job); err != nil || len(job.Keys) == 0 {
+	if err := json.Unmarshal(m.Body, &job); err != nil {
 		w.log.Warn("cleanup: dropping bad message", "err", err)
-		return true // ack: poison / empty message, don't retry forever
+		return true // ack: poison message, don't retry forever
 	}
-	if err := w.store.DeleteObjects(ctx, job.Keys); err != nil {
-		w.log.Warn("cleanup: delete failed", "keys", len(job.Keys), "err", err)
+
+	// Expand each prefix (HLS bundle) into its concrete keys, then delete the
+	// union with the explicit keys in one batch. A list failure is retryable.
+	keys := job.Keys
+	for _, prefix := range job.Prefixes {
+		listed, err := w.store.ListKeys(ctx, prefix)
+		if err != nil {
+			w.log.Warn("cleanup: list failed", "prefix", prefix, "err", err)
+			return false
+		}
+		keys = append(keys, listed...)
+	}
+
+	if len(keys) == 0 {
+		return true // ack: nothing to delete (empty job or already-cleaned prefix)
+	}
+	if err := w.store.DeleteObjects(ctx, keys); err != nil {
+		w.log.Warn("cleanup: delete failed", "keys", len(keys), "err", err)
 		return false
 	}
-	w.log.Info("cleanup: deleted objects", "keys", len(job.Keys))
+	w.log.Info("cleanup: deleted objects", "keys", len(keys), "prefixes", len(job.Prefixes))
 	return true
 }
 

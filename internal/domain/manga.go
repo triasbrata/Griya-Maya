@@ -32,22 +32,45 @@ const (
 )
 
 // Media is a catalog entry (list/search item and detail base) for any media
-// kind. Genres/Categories/Authors/Artists are normalized in storage and surfaced
-// here as display-name arrays.
+// kind. Genres/Authors/Artists are normalized in storage and surfaced here as
+// display-name arrays. SubType is a single classifier bound to Type (e.g.
+// manga|manhwa|manhua for a manga), validated against the managed sub_type
+// vocabulary.
 type Media struct {
 	ID          string      `json:"id"`
 	SourceID    string      `json:"sourceId"`
 	Type        MediaType   `json:"type"`
+	SubType     string      `json:"subType,omitempty"`
 	URL         string      `json:"url"`
 	Title       string      `json:"title"`
 	CoverURL    string      `json:"coverUrl,omitempty"`
 	Description string      `json:"description,omitempty"`
 	Genres      []string    `json:"genres,omitempty"`
-	Categories  []string    `json:"categories,omitempty"`
 	Authors     []string    `json:"authors,omitempty"`
 	Artists     []string    `json:"artists,omitempty"`
 	Status      MediaStatus `json:"status,omitempty"`
 	UpdatedAt   time.Time   `json:"updatedAt,omitempty"`
+}
+
+// SubType is a single, type-scoped classifier for a media entry: a manga is one
+// of manga|manhwa|manhua, a novel is web_novel|light_novel, a video is
+// anime_movie|anime_series|tv_series. The vocabulary is managed in the DB
+// (`sub_type` table) with admin CRUD. Slug is the canonical stored/wire value;
+// Name is its display label; Type is the owning media type (omitted on the
+// per-source distinct listing, where it is redundant).
+type SubType struct {
+	Slug string    `json:"slug"`
+	Type MediaType `json:"type,omitempty"`
+	Name string    `json:"name"`
+}
+
+// SubTypeWriteRequest is the admin create/update payload for a managed sub-type.
+// Slug is the immutable key (required on create), Type must be one of
+// manga|novel|video, and Name is the display label.
+type SubTypeWriteRequest struct {
+	Slug string    `json:"slug"`
+	Type MediaType `json:"type"`
+	Name string    `json:"name"`
 }
 
 // MediaPage is a paginated slice of catalog entries.
@@ -98,35 +121,34 @@ type Page struct {
 	Height   int    `json:"height,omitempty"`
 }
 
-// TaxonomyKind names one of the four normalized, managed taxonomies. It maps 1:1
-// to a storage table (genre/category/author/artist) and its join table.
+// TaxonomyKind names one of the three normalized, managed taxonomies. It maps
+// 1:1 to a storage table (genre/author/artist) and its join table.
 type TaxonomyKind string
 
 const (
-	TaxonomyGenre    TaxonomyKind = "genre"
-	TaxonomyCategory TaxonomyKind = "category"
-	TaxonomyAuthor   TaxonomyKind = "author"
-	TaxonomyArtist   TaxonomyKind = "artist"
+	TaxonomyGenre  TaxonomyKind = "genre"
+	TaxonomyAuthor TaxonomyKind = "author"
+	TaxonomyArtist TaxonomyKind = "artist"
 )
 
 // Valid reports whether k is a known taxonomy kind.
 func (k TaxonomyKind) Valid() bool {
 	switch k {
-	case TaxonomyGenre, TaxonomyCategory, TaxonomyAuthor, TaxonomyArtist:
+	case TaxonomyGenre, TaxonomyAuthor, TaxonomyArtist:
 		return true
 	}
 	return false
 }
 
-// HasSlug reports whether the taxonomy carries a slug (genre/category do;
-// author/artist are name-only).
+// HasSlug reports whether the taxonomy carries a slug (genre does; author/artist
+// are name-only).
 func (k TaxonomyKind) HasSlug() bool {
-	return k == TaxonomyGenre || k == TaxonomyCategory
+	return k == TaxonomyGenre
 }
 
-// Taxonomy is a normalized, managed tag: a genre, category, author, or artist.
-// Slug is set only for genre/category (the app derives its filter id from it);
-// it is empty (and omitted) for author/artist.
+// Taxonomy is a normalized, managed tag: a genre, author, or artist.
+// Slug is set only for genre (the app derives its filter id from it); it is
+// empty (and omitted) for author/artist.
 type Taxonomy struct {
 	ID   string       `json:"id,omitempty"`
 	Slug string       `json:"slug,omitempty"`
@@ -138,16 +160,6 @@ type Taxonomy struct {
 type TaxonomyWriteRequest struct {
 	Name string `json:"name"`
 }
-
-// GenreMode selects how multiple included genres combine.
-type GenreMode string
-
-const (
-	// GenreModeOr matches media carrying ANY of the included genres (default).
-	GenreModeOr GenreMode = "OR"
-	// GenreModeAnd matches only media carrying ALL of the included genres.
-	GenreModeAnd GenreMode = "AND"
-)
 
 // CatalogFilter carries the browse/search filter vocabulary that mirrors the
 // app's `SourceFilterValue`. Zero value = unfiltered, sorted by the feed default.
@@ -161,15 +173,9 @@ type CatalogFilter struct {
 	// Types filters the media `type` column directly (values "manga" | "video" |
 	// "novel"). Multiple types combine as OR (media.type IN (...)).
 	Types []string
-	// IncludeGenres / ExcludeGenres are genre slugs to require / forbid.
-	IncludeGenres []string
-	ExcludeGenres []string
-	// IncludeCategories / ExcludeCategories are category slugs to require / forbid.
-	IncludeCategories []string
-	ExcludeCategories []string
-	// GenreMode combines IncludeGenres/IncludeCategories with OR (any) or AND
-	// (all). Default OR.
-	GenreMode GenreMode
+	// SubTypes filters the media `sub_type` column directly (e.g. "manhwa").
+	// Multiple sub-types combine as OR (media.sub_type IN (...)).
+	SubTypes []string
 }
 
 // SortColumn maps a filter sort key to a media column. It is the single source
@@ -193,12 +199,15 @@ func (f CatalogFilter) SortColumn(feedDefault string) string {
 	}
 }
 
-// MediaWriteRequest is the create/update payload for a media entry. Taxonomies
-// are provided as display names (the service upserts them and rewrites the
-// media's join rows). On create, Type defaults to MediaManga when empty.
+// MediaWriteRequest is the create/update payload for a media entry. Genre/
+// author/artist taxonomies are provided as display names (the service upserts
+// them and rewrites the media's join rows). SubType is a single classifier
+// validated against Type via the managed sub_type vocabulary. On create, Type
+// defaults to MediaManga when empty.
 type MediaWriteRequest struct {
 	SourceID string    `json:"sourceId"`
 	Type     MediaType `json:"type,omitempty"`
+	SubType  string    `json:"subType,omitempty"`
 	// URL identifies the entry in the Mihon source contract. Optional on write:
 	// when omitted, the service defaults it to the generated media id.
 	URL         string      `json:"url,omitempty"`
@@ -207,7 +216,6 @@ type MediaWriteRequest struct {
 	Description string      `json:"description,omitempty"`
 	Status      MediaStatus `json:"status,omitempty"`
 	Genres      []string    `json:"genres,omitempty"`
-	Categories  []string    `json:"categories,omitempty"`
 	Authors     []string    `json:"authors,omitempty"`
 	Artists     []string    `json:"artists,omitempty"`
 }

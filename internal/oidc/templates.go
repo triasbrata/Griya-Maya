@@ -85,7 +85,24 @@ var loginTemplates = template.Must(template.New("").Parse(`
 </body>
 </html>{{end}}
 
-{{define "card"}}{{if .Consent}}{{template "consent" .}}{{else}}{{template "login" .}}{{end}}{{end}}
+{{define "card"}}{{if .Pending}}{{template "pending" .}}{{else if .Consent}}{{template "consent" .}}{{else}}{{template "login" .}}{{end}}{{end}}
+
+{{define "pending"}}
+  <div class="flex flex-col items-center text-center">
+    <span class="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+    </span>
+    <h1 class="text-2xl font-semibold tracking-tight">Account under review</h1>
+    <p class="mt-2 text-sm text-muted-foreground">
+      {{if .Email}}Your email <span class="font-medium text-foreground">{{.Email}}</span> is being reviewed by the server owner.{{else}}Your account is being reviewed by the server owner.{{end}}
+      You'll be able to sign in once it's approved.
+    </p>
+    <a href="/login/username?authRequestID={{.ID}}"
+      class="mt-6 inline-flex h-9 w-full items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      Back to sign in
+    </a>
+  </div>
+{{end}}
 
 {{define "login"}}
   <div class="space-y-1.5">
@@ -135,11 +152,13 @@ var loginTemplates = template.Must(template.New("").Parse(`
 {{end}}
 `))
 
-// loginData drives both the login and consent renders.
+// loginData drives the login, consent, and pending-review renders.
 type loginData struct {
 	ID         string
+	Email      string
 	Error      string
 	Consent    bool
+	Pending    bool
 	ClientName string
 	Scopes     []string
 }

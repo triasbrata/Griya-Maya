@@ -14,6 +14,7 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 	"github.com/triasbrata/mihon-manga-server/internal/handler"
 	"github.com/triasbrata/mihon-manga-server/internal/handler/mocks"
+	"github.com/triasbrata/mihon-manga-server/internal/service"
 	svcmocks "github.com/triasbrata/mihon-manga-server/internal/service/mocks"
 )
 
@@ -105,6 +106,53 @@ func TestVideoHandler_Register_ValidationError(t *testing.T) {
 
 	c := newCtx("POST", "/v1/video", nil, []byte(`{"chapterId":"ch1"}`), "application/json")
 	h.Register(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+}
+
+func TestVideoHandler_Presign_OK(t *testing.T) {
+	svc := mocks.NewMockVideoService(t)
+	h := handler.NewVideoHandler(svc, svcmocks.NewMockObjectStore(t))
+
+	req := domain.VideoPresignRequest{Files: []domain.VideoPresignFile{
+		{Name: "index.m3u8"}, {Name: "v720_0.m4s"},
+	}}
+	svc.EXPECT().PresignUploads(mock.Anything, req).Return(service.VideoPresignResult{
+		Prefix:      "hls/vid1/",
+		PlaylistKey: "hls/vid1/index.m3u8",
+		Items: []service.VideoPresignItem{
+			{Name: "index.m3u8", Key: "hls/vid1/index.m3u8", URL: "https://r2/put/1", ContentType: "application/vnd.apple.mpegurl"},
+			{Name: "v720_0.m4s", Key: "hls/vid1/v720_0.m4s", URL: "https://r2/put/2", ContentType: "video/mp4"},
+		},
+	}, nil)
+
+	c := newCtx("POST", "/v1/video/presign", nil,
+		[]byte(`{"files":[{"name":"index.m3u8"},{"name":"v720_0.m4s"}]}`), "application/json")
+	h.Presign(context.Background(), c)
+
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var out service.VideoPresignResult
+	decodeJSON(t, c, &out)
+	assert.Equal(t, "hls/vid1/index.m3u8", out.PlaylistKey)
+	assert.Len(t, out.Items, 2)
+}
+
+func TestVideoHandler_Presign_BadJSON(t *testing.T) {
+	h := handler.NewVideoHandler(mocks.NewMockVideoService(t), svcmocks.NewMockObjectStore(t))
+
+	c := newCtx("POST", "/v1/video/presign", nil, []byte(`not json`), "application/json")
+	h.Presign(context.Background(), c)
+	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
+}
+
+func TestVideoHandler_Presign_ServiceError(t *testing.T) {
+	svc := mocks.NewMockVideoService(t)
+	h := handler.NewVideoHandler(svc, svcmocks.NewMockObjectStore(t))
+
+	svc.EXPECT().PresignUploads(mock.Anything, mock.Anything).
+		Return(service.VideoPresignResult{}, domain.ErrInvalidInput)
+
+	c := newCtx("POST", "/v1/video/presign", nil, []byte(`{"files":[]}`), "application/json")
+	h.Presign(context.Background(), c)
 	assert.Equal(t, consts.StatusBadRequest, c.Response.StatusCode())
 }
 

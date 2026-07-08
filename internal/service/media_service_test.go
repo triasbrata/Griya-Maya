@@ -67,23 +67,23 @@ func TestMediaService_Search_DelegatesToSearch(t *testing.T) {
 func TestMediaService_Recommendations_DelegatesToRecommend(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
-	genres := []string{"Action", "Comedy"}
+	subTypes := []string{"manhwa", "manhua"}
 	exclude := []string{"seed1"}
 	want := domain.MediaPage{Items: []domain.Media{{ID: "m1"}}, Page: 2}
 
-	repo.EXPECT().Recommend(ctx, "src", genres, exclude, 2, 30).Return(want, nil)
+	repo.EXPECT().Recommend(ctx, "src", subTypes, exclude, 2, 30).Return(want, nil)
 
-	got, err := svc.Recommendations(ctx, "src", genres, exclude, 2)
+	got, err := svc.Recommendations(ctx, "src", subTypes, exclude, 2)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 }
 
-func TestMediaService_Recommendations_FallsBackToPopularWhenNoGenres(t *testing.T) {
+func TestMediaService_Recommendations_FallsBackToPopularWhenNoSubTypes(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
 	want := domain.MediaPage{Items: []domain.Media{{ID: "pop"}}, Page: 1}
 
-	// No genres → the source's popular feed, so the endpoint always returns something.
+	// No sub-types → the source's popular feed, so the endpoint always returns something.
 	repo.EXPECT().List(ctx, "src", "popular", 1, 30, domain.CatalogFilter{}).Return(want, nil)
 
 	got, err := svc.Recommendations(ctx, "src", nil, []string{"seed1"}, 1)
@@ -91,20 +91,31 @@ func TestMediaService_Recommendations_FallsBackToPopularWhenNoGenres(t *testing.
 	assert.Equal(t, want, got)
 }
 
-func TestMediaService_GenresAndCategories(t *testing.T) {
+func TestMediaService_SubTypes(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
 
-	repo.EXPECT().Genres(ctx, "src").Return([]domain.Taxonomy{{Slug: "action", Name: "Action"}}, nil)
-	repo.EXPECT().Categories(ctx, "src").Return([]domain.Taxonomy{{Slug: "webtoon", Name: "Webtoon"}}, nil)
+	repo.EXPECT().SubTypes(ctx, "src").Return([]domain.SubType{{Slug: "manhwa", Name: "Manhwa"}}, nil)
 
-	g, err := svc.Genres(ctx, "src")
+	s, err := svc.SubTypes(ctx, "src")
 	require.NoError(t, err)
-	assert.Equal(t, "action", g[0].Slug)
+	assert.Equal(t, "manhwa", s[0].Slug)
+}
 
-	c, err := svc.Categories(ctx, "src")
+func TestMediaService_SubTypeCatalog(t *testing.T) {
+	svc, repo, _ := newMediaSvc(t, "")
+	ctx := context.Background()
+
+	repo.EXPECT().SubTypeVocab(ctx).Return(map[domain.MediaType][]domain.SubType{
+		domain.MediaManga: {{Slug: "manga", Name: "Manga"}, {Slug: "manhwa", Name: "Manhwa"}},
+		domain.MediaNovel: {{Slug: "web_novel", Name: "Web Novel"}},
+	}, nil)
+
+	got, err := svc.SubTypeCatalog(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "webtoon", c[0].Slug)
+	require.Len(t, got[domain.MediaManga], 2)
+	assert.Equal(t, "manga", got[domain.MediaManga][0].Slug)
+	require.Len(t, got[domain.MediaNovel], 1)
 }
 
 func TestMediaService_Details(t *testing.T) {
@@ -199,16 +210,23 @@ func TestMediaService_CreateMedia_ValidatesAndReturnsStored(t *testing.T) {
 	ctx := context.Background()
 
 	// Service generates the id, so match on any Media then echo a stored row.
+	// A type-valid sub-type is validated against the repo vocab and carried
+	// through, along with the genre round-trip.
+	repo.EXPECT().ValidSubType(ctx, domain.MediaVideo, "anime_series").Return(true, nil)
 	repo.EXPECT().CreateMedia(ctx, mock.MatchedBy(func(m domain.Media) bool {
-		return m.ID != "" && m.SourceID == "src" && m.Type == domain.MediaVideo && m.Title == "T"
+		return m.ID != "" && m.SourceID == "src" && m.Type == domain.MediaVideo &&
+			m.Title == "T" && m.SubType == "anime_series" &&
+			len(m.Genres) == 1 && m.Genres[0] == "Action"
 	})).Return(nil)
-	repo.EXPECT().Get(ctx, mock.Anything).Return(domain.Media{ID: "generated", Title: "T"}, nil)
+	repo.EXPECT().Get(ctx, mock.Anything).Return(domain.Media{ID: "generated", Title: "T", Genres: []string{"Action"}}, nil)
 
 	got, err := svc.CreateMedia(ctx, domain.MediaWriteRequest{
-		SourceID: "src", Type: domain.MediaVideo, URL: "u", Title: "T",
+		SourceID: "src", Type: domain.MediaVideo, SubType: "anime_series", URL: "u", Title: "T",
+		Genres: []string{"Action"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "generated", got.ID)
+	assert.Equal(t, []string{"Action"}, got.Genres)
 }
 
 func TestMediaService_CreateMedia_DefaultsTypeToManga(t *testing.T) {
@@ -239,13 +257,19 @@ func TestMediaService_CreateMedia_DefaultsURLToID(t *testing.T) {
 }
 
 func TestMediaService_CreateMedia_Validation(t *testing.T) {
-	svc, _, _ := newMediaSvc(t, "")
+	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()
+
+	// The sub-type validity check hits the repo (only when sub-type is non-empty
+	// and type is valid); the invalid slug returns false.
+	repo.EXPECT().ValidSubType(ctx, domain.MediaManga, "web_novel").Return(false, nil)
 
 	cases := []domain.MediaWriteRequest{
 		{URL: "u", Title: "T"},      // missing sourceId
 		{SourceID: "src", URL: "u"}, // missing title
 		{SourceID: "src", URL: "u", Title: "T", Type: domain.MediaType("x")}, // bad type
+		// sub-type not in the type's managed vocabulary (web_novel belongs to novel).
+		{SourceID: "src", URL: "u", Title: "T", Type: domain.MediaManga, SubType: "web_novel"},
 	}
 	for _, req := range cases {
 		_, err := svc.CreateMedia(ctx, req)

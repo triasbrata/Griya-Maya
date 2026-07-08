@@ -79,22 +79,21 @@ func TestQueryAll_RepeatedAndCommaJoined(t *testing.T) {
 
 func TestParseCatalogFilter(t *testing.T) {
 	c := app.NewContext(0)
-	c.Request.SetRequestURI("/x?sort=title&order=asc&type=manhwa&genre=action&genreExclude=ecchi&genreMode=and")
+	c.Request.SetRequestURI("/x?sort=title&order=asc&type=manga&subType=manhwa")
 	f := parseCatalogFilter(c)
 	assert.Equal(t, "title", f.Sort)
 	assert.True(t, f.Ascending)
-	assert.Equal(t, []string{"manhwa"}, f.Types)
-	assert.Equal(t, []string{"action"}, f.IncludeGenres)
-	assert.Equal(t, []string{"ecchi"}, f.ExcludeGenres)
-	assert.Equal(t, domain.GenreModeAnd, f.GenreMode)
+	assert.Equal(t, []string{"manga"}, f.Types)
+	assert.Equal(t, []string{"manhwa"}, f.SubTypes)
 }
 
-func TestParseCatalogFilter_DefaultsOrMode(t *testing.T) {
+func TestParseCatalogFilter_Defaults(t *testing.T) {
 	c := app.NewContext(0)
 	c.Request.SetRequestURI("/x")
 	f := parseCatalogFilter(c)
-	assert.Equal(t, domain.GenreModeOr, f.GenreMode)
 	assert.False(t, f.Ascending)
+	assert.Empty(t, f.Types)
+	assert.Empty(t, f.SubTypes)
 }
 
 func TestWriteError_StatusMapping(t *testing.T) {

@@ -23,65 +23,6 @@ func (_m *MockMediaService) EXPECT() *MockMediaService_Expecter {
 	return &MockMediaService_Expecter{mock: &_m.Mock}
 }
 
-// Categories provides a mock function with given fields: ctx, sourceID
-func (_m *MockMediaService) Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	ret := _m.Called(ctx, sourceID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Categories")
-	}
-
-	var r0 []domain.Taxonomy
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.Taxonomy, error)); ok {
-		return rf(ctx, sourceID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.Taxonomy); ok {
-		r0 = rf(ctx, sourceID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Taxonomy)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, sourceID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockMediaService_Categories_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Categories'
-type MockMediaService_Categories_Call struct {
-	*mock.Call
-}
-
-// Categories is a helper method to define mock.On call
-//   - ctx context.Context
-//   - sourceID string
-func (_e *MockMediaService_Expecter) Categories(ctx interface{}, sourceID interface{}) *MockMediaService_Categories_Call {
-	return &MockMediaService_Categories_Call{Call: _e.mock.On("Categories", ctx, sourceID)}
-}
-
-func (_c *MockMediaService_Categories_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaService_Categories_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockMediaService_Categories_Call) Return(_a0 []domain.Taxonomy, _a1 error) *MockMediaService_Categories_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockMediaService_Categories_Call) RunAndReturn(run func(context.Context, string) ([]domain.Taxonomy, error)) *MockMediaService_Categories_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ChapterNeighbors provides a mock function with given fields: ctx, chapterID
 func (_m *MockMediaService) ChapterNeighbors(ctx context.Context, chapterID string) (domain.ChapterNeighbors, error) {
 	ret := _m.Called(ctx, chapterID)
@@ -617,65 +558,6 @@ func (_c *MockMediaService_Details_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
-// Genres provides a mock function with given fields: ctx, sourceID
-func (_m *MockMediaService) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	ret := _m.Called(ctx, sourceID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Genres")
-	}
-
-	var r0 []domain.Taxonomy
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.Taxonomy, error)); ok {
-		return rf(ctx, sourceID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.Taxonomy); ok {
-		r0 = rf(ctx, sourceID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Taxonomy)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, sourceID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockMediaService_Genres_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Genres'
-type MockMediaService_Genres_Call struct {
-	*mock.Call
-}
-
-// Genres is a helper method to define mock.On call
-//   - ctx context.Context
-//   - sourceID string
-func (_e *MockMediaService_Expecter) Genres(ctx interface{}, sourceID interface{}) *MockMediaService_Genres_Call {
-	return &MockMediaService_Genres_Call{Call: _e.mock.On("Genres", ctx, sourceID)}
-}
-
-func (_c *MockMediaService_Genres_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaService_Genres_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockMediaService_Genres_Call) Return(_a0 []domain.Taxonomy, _a1 error) *MockMediaService_Genres_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockMediaService_Genres_Call) RunAndReturn(run func(context.Context, string) ([]domain.Taxonomy, error)) *MockMediaService_Genres_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Latest provides a mock function with given fields: ctx, sourceID, page, filter
 func (_m *MockMediaService) Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
 	ret := _m.Called(ctx, sourceID, page, filter)
@@ -853,9 +735,9 @@ func (_c *MockMediaService_Popular_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
-// Recommendations provides a mock function with given fields: ctx, sourceID, genres, exclude, page
-func (_m *MockMediaService) Recommendations(ctx context.Context, sourceID string, genres []string, exclude []string, page int) (domain.MediaPage, error) {
-	ret := _m.Called(ctx, sourceID, genres, exclude, page)
+// Recommendations provides a mock function with given fields: ctx, sourceID, subTypes, exclude, page
+func (_m *MockMediaService) Recommendations(ctx context.Context, sourceID string, subTypes []string, exclude []string, page int) (domain.MediaPage, error) {
+	ret := _m.Called(ctx, sourceID, subTypes, exclude, page)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Recommendations")
@@ -864,16 +746,16 @@ func (_m *MockMediaService) Recommendations(ctx context.Context, sourceID string
 	var r0 domain.MediaPage
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int) (domain.MediaPage, error)); ok {
-		return rf(ctx, sourceID, genres, exclude, page)
+		return rf(ctx, sourceID, subTypes, exclude, page)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int) domain.MediaPage); ok {
-		r0 = rf(ctx, sourceID, genres, exclude, page)
+		r0 = rf(ctx, sourceID, subTypes, exclude, page)
 	} else {
 		r0 = ret.Get(0).(domain.MediaPage)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string, []string, []string, int) error); ok {
-		r1 = rf(ctx, sourceID, genres, exclude, page)
+		r1 = rf(ctx, sourceID, subTypes, exclude, page)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -889,14 +771,14 @@ type MockMediaService_Recommendations_Call struct {
 // Recommendations is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sourceID string
-//   - genres []string
+//   - subTypes []string
 //   - exclude []string
 //   - page int
-func (_e *MockMediaService_Expecter) Recommendations(ctx interface{}, sourceID interface{}, genres interface{}, exclude interface{}, page interface{}) *MockMediaService_Recommendations_Call {
-	return &MockMediaService_Recommendations_Call{Call: _e.mock.On("Recommendations", ctx, sourceID, genres, exclude, page)}
+func (_e *MockMediaService_Expecter) Recommendations(ctx interface{}, sourceID interface{}, subTypes interface{}, exclude interface{}, page interface{}) *MockMediaService_Recommendations_Call {
+	return &MockMediaService_Recommendations_Call{Call: _e.mock.On("Recommendations", ctx, sourceID, subTypes, exclude, page)}
 }
 
-func (_c *MockMediaService_Recommendations_Call) Run(run func(ctx context.Context, sourceID string, genres []string, exclude []string, page int)) *MockMediaService_Recommendations_Call {
+func (_c *MockMediaService_Recommendations_Call) Run(run func(ctx context.Context, sourceID string, subTypes []string, exclude []string, page int)) *MockMediaService_Recommendations_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].([]string), args[3].([]string), args[4].(int))
 	})
@@ -969,6 +851,123 @@ func (_c *MockMediaService_Search_Call) Return(_a0 domain.MediaPage, _a1 error) 
 }
 
 func (_c *MockMediaService_Search_Call) RunAndReturn(run func(context.Context, string, string, int, domain.CatalogFilter) (domain.MediaPage, error)) *MockMediaService_Search_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SubTypeCatalog provides a mock function with given fields: ctx
+func (_m *MockMediaService) SubTypeCatalog(ctx context.Context) (map[domain.MediaType][]domain.SubType, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubTypeCatalog")
+	}
+
+	var r0 map[domain.MediaType][]domain.SubType
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (map[domain.MediaType][]domain.SubType, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) map[domain.MediaType][]domain.SubType); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[domain.MediaType][]domain.SubType)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaService_SubTypeCatalog_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubTypeCatalog'
+type MockMediaService_SubTypeCatalog_Call struct {
+	*mock.Call
+}
+
+// SubTypeCatalog is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockMediaService_Expecter) SubTypeCatalog(ctx interface{}) *MockMediaService_SubTypeCatalog_Call {
+	return &MockMediaService_SubTypeCatalog_Call{Call: _e.mock.On("SubTypeCatalog", ctx)}
+}
+
+func (_c *MockMediaService_SubTypeCatalog_Call) Run(run func(ctx context.Context)) *MockMediaService_SubTypeCatalog_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_SubTypeCatalog_Call) Return(_a0 map[domain.MediaType][]domain.SubType, _a1 error) *MockMediaService_SubTypeCatalog_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaService_SubTypeCatalog_Call) RunAndReturn(run func(context.Context) (map[domain.MediaType][]domain.SubType, error)) *MockMediaService_SubTypeCatalog_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SubTypes provides a mock function with given fields: ctx, sourceID
+func (_m *MockMediaService) SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error) {
+	ret := _m.Called(ctx, sourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubTypes")
+	}
+
+	var r0 []domain.SubType
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.SubType, error)); ok {
+		return rf(ctx, sourceID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.SubType); ok {
+		r0 = rf(ctx, sourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.SubType)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, sourceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaService_SubTypes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubTypes'
+type MockMediaService_SubTypes_Call struct {
+	*mock.Call
+}
+
+// SubTypes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceID string
+func (_e *MockMediaService_Expecter) SubTypes(ctx interface{}, sourceID interface{}) *MockMediaService_SubTypes_Call {
+	return &MockMediaService_SubTypes_Call{Call: _e.mock.On("SubTypes", ctx, sourceID)}
+}
+
+func (_c *MockMediaService_SubTypes_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaService_SubTypes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaService_SubTypes_Call) Return(_a0 []domain.SubType, _a1 error) *MockMediaService_SubTypes_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaService_SubTypes_Call) RunAndReturn(run func(context.Context, string) ([]domain.SubType, error)) *MockMediaService_SubTypes_Call {
 	_c.Call.Return(run)
 	return _c
 }

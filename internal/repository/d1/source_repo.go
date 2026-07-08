@@ -35,6 +35,38 @@ func (r *SourceRepo) List(ctx context.Context, enabledOnly bool) ([]domain.Sourc
 	for _, row := range rows {
 		out = append(out, sourceFromRow(row))
 	}
+	types, err := r.mediaTypesBySource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if ts := types[out[i].ID]; len(ts) > 0 {
+			out[i].MediaTypes = ts
+		}
+	}
+	return out, nil
+}
+
+// mediaTypesBySource returns, per source id, the distinct media types it carries
+// (alphabetically sorted). A single grouped scan of `media` avoids an N+1 probe
+// per source; the SQL does the dedup and ordering so the response is stable.
+func (r *SourceRepo) mediaTypesBySource(ctx context.Context) (map[string][]string, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT source_id, type FROM media
+		 WHERE type IS NOT NULL AND type <> ''
+		 GROUP BY source_id, type
+		 ORDER BY source_id, type ASC`)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(rows))
+	for _, row := range rows {
+		sid := strVal(row["source_id"])
+		if sid == "" {
+			continue
+		}
+		out[sid] = append(out[sid], strVal(row["type"]))
+	}
 	return out, nil
 }
 

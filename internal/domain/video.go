@@ -1,5 +1,47 @@
 package domain
 
+import (
+	"path"
+	"strings"
+)
+
+// VideoPresignFile names one file the client intends to upload straight to R2.
+// ContentType is optional; when empty the server derives it from the extension.
+type VideoPresignFile struct {
+	Name        string `json:"name"`
+	ContentType string `json:"contentType,omitempty"`
+}
+
+// VideoPresignRequest asks for a batch of direct-to-R2 PUT URLs for an HLS
+// bundle (playlist + init + segments), mirroring the convert/ad presign flow so
+// the browser never streams video bytes through the container.
+type VideoPresignRequest struct {
+	// Files are every part of the bundle (playlist(s), init, segments). Required.
+	Files []VideoPresignFile `json:"files"`
+	// Prefix is an optional target R2 key prefix; defaults to hls/{uuid}/.
+	Prefix string `json:"prefix,omitempty"`
+}
+
+// HLSContentType maps an HLS bundle filename to its MIME type, defaulting to
+// application/octet-stream for unknown extensions. Shared by the upload/presign
+// path and the stream proxy so stored and served content types agree.
+func HLSContentType(name string) string {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".m3u8":
+		return "application/vnd.apple.mpegurl"
+	case ".ts":
+		return "video/mp2t"
+	case ".m4s", ".mp4":
+		return "video/mp4"
+	case ".vtt":
+		return "text/vtt"
+	case ".aac":
+		return "audio/aac"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // VideoRegisterRequest associates an already-uploaded HLS bundle in R2 with a
 // chapter, so the reader endpoint serves that chapter as a single video page.
 //

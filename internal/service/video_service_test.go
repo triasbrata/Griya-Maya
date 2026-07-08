@@ -3,7 +3,9 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -72,4 +74,99 @@ func TestVideoService_Register_PersistError(t *testing.T) {
 
 	_, err := svc.Register(ctx, domain.VideoRegisterRequest{ChapterID: "ch1", PlaylistKey: "hls/a/index.m3u8"})
 	assert.ErrorIs(t, err, wantErr)
+}
+
+func TestVideoService_PresignUploads(t *testing.T) {
+	t.Run("mints per-file slots under one prefix, derives content types, picks index.m3u8", func(t *testing.T) {
+		svc, _, store := newVideoSvc(t, "")
+		ctx := context.Background()
+
+		// Echo the key back as the URL so we can assert per-item wiring.
+		store.EXPECT().
+			PresignPut(mock.Anything, mock.Anything, 30*time.Minute, mock.Anything).
+			RunAndReturn(func(_ context.Context, key string, _ time.Duration, _ string) (string, error) {
+				return "https://r2/" + key, nil
+			}).Times(4)
+
+		res, err := svc.PresignUploads(ctx, domain.VideoPresignRequest{
+			Files: []domain.VideoPresignFile{
+				{Name: "v720.m3u8"},
+				{Name: "v720_init.mp4"},
+				{Name: "v720_0.m4s"},
+				{Name: "index.m3u8"},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Items, 4)
+		assert.True(t, strings.HasPrefix(res.Prefix, "hls/"))
+		assert.True(t, strings.HasSuffix(res.Prefix, "/"))
+		// index.m3u8 wins over the earlier v720.m3u8 as the playlist key.
+		assert.Equal(t, res.Prefix+"index.m3u8", res.PlaylistKey)
+
+		byName := map[string]service.VideoPresignItem{}
+		for _, it := range res.Items {
+			byName[it.Name] = it
+			assert.Equal(t, res.Prefix+it.Name, it.Key)
+			assert.Equal(t, "https://r2/"+it.Key, it.URL)
+		}
+		assert.Equal(t, "application/vnd.apple.mpegurl", byName["v720.m3u8"].ContentType)
+		assert.Equal(t, "video/mp4", byName["v720_init.mp4"].ContentType)
+		assert.Equal(t, "video/mp4", byName["v720_0.m4s"].ContentType)
+	})
+
+	t.Run("honors a client-provided content type and a custom prefix", func(t *testing.T) {
+		svc, _, store := newVideoSvc(t, "")
+		store.EXPECT().
+			PresignPut(mock.Anything, "hls/custom/index.m3u8", 30*time.Minute, "application/x-mpegURL").
+			Return("https://r2/x", nil).Once()
+
+		res, err := svc.PresignUploads(context.Background(), domain.VideoPresignRequest{
+			Prefix: "hls/custom", // no trailing slash — normalized
+			Files:  []domain.VideoPresignFile{{Name: "index.m3u8", ContentType: "application/x-mpegURL"}},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "hls/custom/index.m3u8", res.PlaylistKey)
+	})
+
+	t.Run("rejects empty and oversized batches", func(t *testing.T) {
+		svc, _, _ := newVideoSvc(t, "")
+		_, err := svc.PresignUploads(context.Background(), domain.VideoPresignRequest{})
+		assert.ErrorIs(t, err, domain.ErrInvalidInput)
+
+		big := make([]domain.VideoPresignFile, 5001)
+		_, err = svc.PresignUploads(context.Background(), domain.VideoPresignRequest{Files: big})
+		assert.ErrorIs(t, err, domain.ErrInvalidInput)
+	})
+
+	t.Run("rejects a bundle with no playlist", func(t *testing.T) {
+		svc, _, store := newVideoSvc(t, "")
+		store.EXPECT().
+			PresignPut(mock.Anything, mock.Anything, 30*time.Minute, mock.Anything).
+			Return("https://r2/x", nil).Once()
+
+		_, err := svc.PresignUploads(context.Background(), domain.VideoPresignRequest{
+			Files: []domain.VideoPresignFile{{Name: "v720_0.m4s"}},
+		})
+		assert.ErrorIs(t, err, domain.ErrInvalidInput)
+	})
+
+	t.Run("rejects an empty file name", func(t *testing.T) {
+		svc, _, _ := newVideoSvc(t, "")
+		_, err := svc.PresignUploads(context.Background(), domain.VideoPresignRequest{
+			Files: []domain.VideoPresignFile{{Name: "  "}},
+		})
+		assert.ErrorIs(t, err, domain.ErrInvalidInput)
+	})
+
+	t.Run("propagates presign error", func(t *testing.T) {
+		svc, _, store := newVideoSvc(t, "")
+		boom := errors.New("presign boom")
+		store.EXPECT().PresignPut(mock.Anything, mock.Anything, 30*time.Minute, mock.Anything).
+			Return("", boom).Once()
+
+		_, err := svc.PresignUploads(context.Background(), domain.VideoPresignRequest{
+			Files: []domain.VideoPresignFile{{Name: "index.m3u8"}},
+		})
+		assert.ErrorIs(t, err, boom)
+	})
 }

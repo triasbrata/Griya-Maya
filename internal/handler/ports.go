@@ -15,9 +15,11 @@ type MediaService interface {
 	Popular(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Search(ctx context.Context, sourceID, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error)
-	Recommendations(ctx context.Context, sourceID string, genres, exclude []string, page int) (domain.MediaPage, error)
-	Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
-	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
+	Recommendations(ctx context.Context, sourceID string, subTypes, exclude []string, page int) (domain.MediaPage, error)
+	// SubTypes lists the distinct sub-types present in a source's catalog.
+	SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error)
+	// SubTypeCatalog returns the managed sub-type vocabulary grouped by media type.
+	SubTypeCatalog(ctx context.Context) (map[domain.MediaType][]domain.SubType, error)
 	Details(ctx context.Context, id string) (domain.Media, error)
 	Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error)
 	ChapterNeighbors(ctx context.Context, chapterID string) (domain.ChapterNeighbors, error)
@@ -64,6 +66,15 @@ type AdService interface {
 	PresignUpload(ctx context.Context, contentType string) (service.PresignItem, error)
 }
 
+// SubTypeService is the managed sub-type CRUD port the SubTypeHandler depends on
+// (implemented by *service.SubTypeService).
+type SubTypeService interface {
+	List(ctx context.Context) ([]domain.SubType, error)
+	Create(ctx context.Context, req domain.SubTypeWriteRequest) (domain.SubType, error)
+	Update(ctx context.Context, slug string, req domain.SubTypeWriteRequest) (domain.SubType, error)
+	Delete(ctx context.Context, slug string) error
+}
+
 // TaxonomyService is the taxonomy-management port the TaxonomyHandler depends on
 // (implemented by *service.TaxonomyService).
 type TaxonomyService interface {
@@ -84,6 +95,7 @@ type ConvertService interface {
 // VideoService is the HLS registration port the VideoHandler depends on
 // (implemented by *service.VideoService).
 type VideoService interface {
+	PresignUploads(ctx context.Context, req domain.VideoPresignRequest) (service.VideoPresignResult, error)
 	Register(ctx context.Context, req domain.VideoRegisterRequest) (domain.Page, error)
 }
 

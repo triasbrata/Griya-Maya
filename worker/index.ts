@@ -27,6 +27,9 @@ export class MangaServer extends Container {
     R2_ACCESS_KEY_ID: this.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: this.env.R2_SECRET_ACCESS_KEY,
     R2_PUBLIC_BASE_URL: this.env.R2_PUBLIC_BASE_URL,
+    // S3-compatible override (MinIO/self-hosted). Empty in prod = target R2.
+    S3_ENDPOINT: this.env.S3_ENDPOINT,
+    S3_REGION: this.env.S3_REGION,
     PRESIGN_TTL_SEC: this.env.PRESIGN_TTL_SEC,
     // Cloudflare KV (short-lived OIDC state).
     KV_NAMESPACE_ID: this.env.KV_NAMESPACE_ID,

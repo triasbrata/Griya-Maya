@@ -44,6 +44,43 @@ func TestMediaService_DeleteChapters_CollectsKeysAndEnqueuesOnce(t *testing.T) {
 	require.NoError(t, svc.DeleteChapters(ctx, []string{"c1", " ", "c2"}))
 }
 
+func TestMediaService_DeleteChapters_VideoBundleEnqueuesPrefix(t *testing.T) {
+	svc, repo, _, clq := newMediaSvcCleanup(t)
+	ctx := context.Background()
+
+	// A video chapter records only its playlist key; the whole hls/{id}/ bundle
+	// (init + segments) must be swept, so it's enqueued as a recursive prefix.
+	repo.EXPECT().Pages(ctx, "c1").Return([]domain.StoredPage{
+		{Index: 0, R2Key: "hls/vid1/index.m3u8", Kind: domain.PageKindVideo},
+	}, nil)
+	repo.EXPECT().DeleteChapter(ctx, "c1").Return(nil)
+
+	clq.EXPECT().EnqueuePrefixes(ctx, []string{"hls/vid1/"}).Return(nil)
+	// No plain-key Enqueue for a video-only delete.
+
+	require.NoError(t, svc.DeleteChapters(ctx, []string{"c1"}))
+}
+
+func TestMediaService_DeleteChapters_MixedKeysAndVideoPrefix(t *testing.T) {
+	svc, repo, _, clq := newMediaSvcCleanup(t)
+	ctx := context.Background()
+
+	repo.EXPECT().Pages(ctx, "c1").Return([]domain.StoredPage{
+		{Index: 0, R2Key: "pages/a.avif", Kind: domain.PageKindImage},
+	}, nil)
+	repo.EXPECT().DeleteChapter(ctx, "c1").Return(nil)
+	repo.EXPECT().Pages(ctx, "c2").Return([]domain.StoredPage{
+		{Index: 0, R2Key: "hls/vid2/index.m3u8", Kind: domain.PageKindVideo},
+	}, nil)
+	repo.EXPECT().DeleteChapter(ctx, "c2").Return(nil)
+
+	// Plain keys and bundle prefixes are enqueued as separate jobs.
+	clq.EXPECT().Enqueue(ctx, []string{"pages/a.avif"}).Return(nil)
+	clq.EXPECT().EnqueuePrefixes(ctx, []string{"hls/vid2/"}).Return(nil)
+
+	require.NoError(t, svc.DeleteChapters(ctx, []string{"c1", "c2"}))
+}
+
 func TestMediaService_DeleteChapters_NoKeysNoEnqueue(t *testing.T) {
 	svc, repo, _, _ := newMediaSvcCleanup(t)
 	ctx := context.Background()

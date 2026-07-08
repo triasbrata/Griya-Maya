@@ -22,65 +22,6 @@ func (_m *MockMediaRepository) EXPECT() *MockMediaRepository_Expecter {
 	return &MockMediaRepository_Expecter{mock: &_m.Mock}
 }
 
-// Categories provides a mock function with given fields: ctx, sourceID
-func (_m *MockMediaRepository) Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	ret := _m.Called(ctx, sourceID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Categories")
-	}
-
-	var r0 []domain.Taxonomy
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.Taxonomy, error)); ok {
-		return rf(ctx, sourceID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.Taxonomy); ok {
-		r0 = rf(ctx, sourceID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Taxonomy)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, sourceID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockMediaRepository_Categories_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Categories'
-type MockMediaRepository_Categories_Call struct {
-	*mock.Call
-}
-
-// Categories is a helper method to define mock.On call
-//   - ctx context.Context
-//   - sourceID string
-func (_e *MockMediaRepository_Expecter) Categories(ctx interface{}, sourceID interface{}) *MockMediaRepository_Categories_Call {
-	return &MockMediaRepository_Categories_Call{Call: _e.mock.On("Categories", ctx, sourceID)}
-}
-
-func (_c *MockMediaRepository_Categories_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaRepository_Categories_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockMediaRepository_Categories_Call) Return(_a0 []domain.Taxonomy, _a1 error) *MockMediaRepository_Categories_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockMediaRepository_Categories_Call) RunAndReturn(run func(context.Context, string) ([]domain.Taxonomy, error)) *MockMediaRepository_Categories_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ChapterByID provides a mock function with given fields: ctx, id
 func (_m *MockMediaRepository) ChapterByID(ctx context.Context, id string) (domain.Chapter, error) {
 	ret := _m.Called(ctx, id)
@@ -291,6 +232,53 @@ func (_c *MockMediaRepository_CreateMedia_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
+// CreateSubType provides a mock function with given fields: ctx, st
+func (_m *MockMediaRepository) CreateSubType(ctx context.Context, st domain.SubType) error {
+	ret := _m.Called(ctx, st)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSubType")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, domain.SubType) error); ok {
+		r0 = rf(ctx, st)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaRepository_CreateSubType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSubType'
+type MockMediaRepository_CreateSubType_Call struct {
+	*mock.Call
+}
+
+// CreateSubType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - st domain.SubType
+func (_e *MockMediaRepository_Expecter) CreateSubType(ctx interface{}, st interface{}) *MockMediaRepository_CreateSubType_Call {
+	return &MockMediaRepository_CreateSubType_Call{Call: _e.mock.On("CreateSubType", ctx, st)}
+}
+
+func (_c *MockMediaRepository_CreateSubType_Call) Run(run func(ctx context.Context, st domain.SubType)) *MockMediaRepository_CreateSubType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(domain.SubType))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_CreateSubType_Call) Return(_a0 error) *MockMediaRepository_CreateSubType_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaRepository_CreateSubType_Call) RunAndReturn(run func(context.Context, domain.SubType) error) *MockMediaRepository_CreateSubType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateTaxonomy provides a mock function with given fields: ctx, kind, name
 func (_m *MockMediaRepository) CreateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, name string) (domain.Taxonomy, error) {
 	ret := _m.Called(ctx, kind, name)
@@ -491,6 +479,53 @@ func (_c *MockMediaRepository_DeletePage_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// DeleteSubType provides a mock function with given fields: ctx, slug
+func (_m *MockMediaRepository) DeleteSubType(ctx context.Context, slug string) error {
+	ret := _m.Called(ctx, slug)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSubType")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, slug)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaRepository_DeleteSubType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSubType'
+type MockMediaRepository_DeleteSubType_Call struct {
+	*mock.Call
+}
+
+// DeleteSubType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - slug string
+func (_e *MockMediaRepository_Expecter) DeleteSubType(ctx interface{}, slug interface{}) *MockMediaRepository_DeleteSubType_Call {
+	return &MockMediaRepository_DeleteSubType_Call{Call: _e.mock.On("DeleteSubType", ctx, slug)}
+}
+
+func (_c *MockMediaRepository_DeleteSubType_Call) Run(run func(ctx context.Context, slug string)) *MockMediaRepository_DeleteSubType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_DeleteSubType_Call) Return(_a0 error) *MockMediaRepository_DeleteSubType_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaRepository_DeleteSubType_Call) RunAndReturn(run func(context.Context, string) error) *MockMediaRepository_DeleteSubType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteTaxonomy provides a mock function with given fields: ctx, kind, id
 func (_m *MockMediaRepository) DeleteTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string) error {
 	ret := _m.Called(ctx, kind, id)
@@ -535,65 +570,6 @@ func (_c *MockMediaRepository_DeleteTaxonomy_Call) Return(_a0 error) *MockMediaR
 }
 
 func (_c *MockMediaRepository_DeleteTaxonomy_Call) RunAndReturn(run func(context.Context, domain.TaxonomyKind, string) error) *MockMediaRepository_DeleteTaxonomy_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Genres provides a mock function with given fields: ctx, sourceID
-func (_m *MockMediaRepository) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	ret := _m.Called(ctx, sourceID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Genres")
-	}
-
-	var r0 []domain.Taxonomy
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.Taxonomy, error)); ok {
-		return rf(ctx, sourceID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.Taxonomy); ok {
-		r0 = rf(ctx, sourceID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Taxonomy)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, sourceID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockMediaRepository_Genres_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Genres'
-type MockMediaRepository_Genres_Call struct {
-	*mock.Call
-}
-
-// Genres is a helper method to define mock.On call
-//   - ctx context.Context
-//   - sourceID string
-func (_e *MockMediaRepository_Expecter) Genres(ctx interface{}, sourceID interface{}) *MockMediaRepository_Genres_Call {
-	return &MockMediaRepository_Genres_Call{Call: _e.mock.On("Genres", ctx, sourceID)}
-}
-
-func (_c *MockMediaRepository_Genres_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaRepository_Genres_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockMediaRepository_Genres_Call) Return(_a0 []domain.Taxonomy, _a1 error) *MockMediaRepository_Genres_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockMediaRepository_Genres_Call) RunAndReturn(run func(context.Context, string) ([]domain.Taxonomy, error)) *MockMediaRepository_Genres_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -893,9 +869,9 @@ func (_c *MockMediaRepository_Pages_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// Recommend provides a mock function with given fields: ctx, sourceID, genres, exclude, page, perPage
-func (_m *MockMediaRepository) Recommend(ctx context.Context, sourceID string, genres []string, exclude []string, page int, perPage int) (domain.MediaPage, error) {
-	ret := _m.Called(ctx, sourceID, genres, exclude, page, perPage)
+// Recommend provides a mock function with given fields: ctx, sourceID, subTypes, exclude, page, perPage
+func (_m *MockMediaRepository) Recommend(ctx context.Context, sourceID string, subTypes []string, exclude []string, page int, perPage int) (domain.MediaPage, error) {
+	ret := _m.Called(ctx, sourceID, subTypes, exclude, page, perPage)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Recommend")
@@ -904,16 +880,16 @@ func (_m *MockMediaRepository) Recommend(ctx context.Context, sourceID string, g
 	var r0 domain.MediaPage
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int, int) (domain.MediaPage, error)); ok {
-		return rf(ctx, sourceID, genres, exclude, page, perPage)
+		return rf(ctx, sourceID, subTypes, exclude, page, perPage)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, string, []string, []string, int, int) domain.MediaPage); ok {
-		r0 = rf(ctx, sourceID, genres, exclude, page, perPage)
+		r0 = rf(ctx, sourceID, subTypes, exclude, page, perPage)
 	} else {
 		r0 = ret.Get(0).(domain.MediaPage)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string, []string, []string, int, int) error); ok {
-		r1 = rf(ctx, sourceID, genres, exclude, page, perPage)
+		r1 = rf(ctx, sourceID, subTypes, exclude, page, perPage)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -929,15 +905,15 @@ type MockMediaRepository_Recommend_Call struct {
 // Recommend is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sourceID string
-//   - genres []string
+//   - subTypes []string
 //   - exclude []string
 //   - page int
 //   - perPage int
-func (_e *MockMediaRepository_Expecter) Recommend(ctx interface{}, sourceID interface{}, genres interface{}, exclude interface{}, page interface{}, perPage interface{}) *MockMediaRepository_Recommend_Call {
-	return &MockMediaRepository_Recommend_Call{Call: _e.mock.On("Recommend", ctx, sourceID, genres, exclude, page, perPage)}
+func (_e *MockMediaRepository_Expecter) Recommend(ctx interface{}, sourceID interface{}, subTypes interface{}, exclude interface{}, page interface{}, perPage interface{}) *MockMediaRepository_Recommend_Call {
+	return &MockMediaRepository_Recommend_Call{Call: _e.mock.On("Recommend", ctx, sourceID, subTypes, exclude, page, perPage)}
 }
 
-func (_c *MockMediaRepository_Recommend_Call) Run(run func(ctx context.Context, sourceID string, genres []string, exclude []string, page int, perPage int)) *MockMediaRepository_Recommend_Call {
+func (_c *MockMediaRepository_Recommend_Call) Run(run func(ctx context.Context, sourceID string, subTypes []string, exclude []string, page int, perPage int)) *MockMediaRepository_Recommend_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].([]string), args[3].([]string), args[4].(int), args[5].(int))
 	})
@@ -1063,6 +1039,123 @@ func (_c *MockMediaRepository_SetMediaCover_Call) RunAndReturn(run func(context.
 	return _c
 }
 
+// SubTypeVocab provides a mock function with given fields: ctx
+func (_m *MockMediaRepository) SubTypeVocab(ctx context.Context) (map[domain.MediaType][]domain.SubType, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubTypeVocab")
+	}
+
+	var r0 map[domain.MediaType][]domain.SubType
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (map[domain.MediaType][]domain.SubType, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) map[domain.MediaType][]domain.SubType); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[domain.MediaType][]domain.SubType)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaRepository_SubTypeVocab_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubTypeVocab'
+type MockMediaRepository_SubTypeVocab_Call struct {
+	*mock.Call
+}
+
+// SubTypeVocab is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockMediaRepository_Expecter) SubTypeVocab(ctx interface{}) *MockMediaRepository_SubTypeVocab_Call {
+	return &MockMediaRepository_SubTypeVocab_Call{Call: _e.mock.On("SubTypeVocab", ctx)}
+}
+
+func (_c *MockMediaRepository_SubTypeVocab_Call) Run(run func(ctx context.Context)) *MockMediaRepository_SubTypeVocab_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_SubTypeVocab_Call) Return(_a0 map[domain.MediaType][]domain.SubType, _a1 error) *MockMediaRepository_SubTypeVocab_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaRepository_SubTypeVocab_Call) RunAndReturn(run func(context.Context) (map[domain.MediaType][]domain.SubType, error)) *MockMediaRepository_SubTypeVocab_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SubTypes provides a mock function with given fields: ctx, sourceID
+func (_m *MockMediaRepository) SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error) {
+	ret := _m.Called(ctx, sourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubTypes")
+	}
+
+	var r0 []domain.SubType
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]domain.SubType, error)); ok {
+		return rf(ctx, sourceID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []domain.SubType); ok {
+		r0 = rf(ctx, sourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.SubType)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, sourceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaRepository_SubTypes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubTypes'
+type MockMediaRepository_SubTypes_Call struct {
+	*mock.Call
+}
+
+// SubTypes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceID string
+func (_e *MockMediaRepository_Expecter) SubTypes(ctx interface{}, sourceID interface{}) *MockMediaRepository_SubTypes_Call {
+	return &MockMediaRepository_SubTypes_Call{Call: _e.mock.On("SubTypes", ctx, sourceID)}
+}
+
+func (_c *MockMediaRepository_SubTypes_Call) Run(run func(ctx context.Context, sourceID string)) *MockMediaRepository_SubTypes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_SubTypes_Call) Return(_a0 []domain.SubType, _a1 error) *MockMediaRepository_SubTypes_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaRepository_SubTypes_Call) RunAndReturn(run func(context.Context, string) ([]domain.SubType, error)) *MockMediaRepository_SubTypes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateChapter provides a mock function with given fields: ctx, c
 func (_m *MockMediaRepository) UpdateChapter(ctx context.Context, c domain.Chapter) error {
 	ret := _m.Called(ctx, c)
@@ -1157,6 +1250,54 @@ func (_c *MockMediaRepository_UpdateMedia_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
+// UpdateSubType provides a mock function with given fields: ctx, slug, st
+func (_m *MockMediaRepository) UpdateSubType(ctx context.Context, slug string, st domain.SubType) error {
+	ret := _m.Called(ctx, slug, st)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSubType")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, domain.SubType) error); ok {
+		r0 = rf(ctx, slug, st)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockMediaRepository_UpdateSubType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSubType'
+type MockMediaRepository_UpdateSubType_Call struct {
+	*mock.Call
+}
+
+// UpdateSubType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - slug string
+//   - st domain.SubType
+func (_e *MockMediaRepository_Expecter) UpdateSubType(ctx interface{}, slug interface{}, st interface{}) *MockMediaRepository_UpdateSubType_Call {
+	return &MockMediaRepository_UpdateSubType_Call{Call: _e.mock.On("UpdateSubType", ctx, slug, st)}
+}
+
+func (_c *MockMediaRepository_UpdateSubType_Call) Run(run func(ctx context.Context, slug string, st domain.SubType)) *MockMediaRepository_UpdateSubType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(domain.SubType))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_UpdateSubType_Call) Return(_a0 error) *MockMediaRepository_UpdateSubType_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMediaRepository_UpdateSubType_Call) RunAndReturn(run func(context.Context, string, domain.SubType) error) *MockMediaRepository_UpdateSubType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateTaxonomy provides a mock function with given fields: ctx, kind, id, name
 func (_m *MockMediaRepository) UpdateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string, name string) (domain.Taxonomy, error) {
 	ret := _m.Called(ctx, kind, id, name)
@@ -1212,6 +1353,64 @@ func (_c *MockMediaRepository_UpdateTaxonomy_Call) Return(_a0 domain.Taxonomy, _
 }
 
 func (_c *MockMediaRepository_UpdateTaxonomy_Call) RunAndReturn(run func(context.Context, domain.TaxonomyKind, string, string) (domain.Taxonomy, error)) *MockMediaRepository_UpdateTaxonomy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidSubType provides a mock function with given fields: ctx, t, slug
+func (_m *MockMediaRepository) ValidSubType(ctx context.Context, t domain.MediaType, slug string) (bool, error) {
+	ret := _m.Called(ctx, t, slug)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidSubType")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, domain.MediaType, string) (bool, error)); ok {
+		return rf(ctx, t, slug)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, domain.MediaType, string) bool); ok {
+		r0 = rf(ctx, t, slug)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, domain.MediaType, string) error); ok {
+		r1 = rf(ctx, t, slug)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockMediaRepository_ValidSubType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidSubType'
+type MockMediaRepository_ValidSubType_Call struct {
+	*mock.Call
+}
+
+// ValidSubType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - t domain.MediaType
+//   - slug string
+func (_e *MockMediaRepository_Expecter) ValidSubType(ctx interface{}, t interface{}, slug interface{}) *MockMediaRepository_ValidSubType_Call {
+	return &MockMediaRepository_ValidSubType_Call{Call: _e.mock.On("ValidSubType", ctx, t, slug)}
+}
+
+func (_c *MockMediaRepository_ValidSubType_Call) Run(run func(ctx context.Context, t domain.MediaType, slug string)) *MockMediaRepository_ValidSubType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(domain.MediaType), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockMediaRepository_ValidSubType_Call) Return(_a0 bool, _a1 error) *MockMediaRepository_ValidSubType_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockMediaRepository_ValidSubType_Call) RunAndReturn(run func(context.Context, domain.MediaType, string) (bool, error)) *MockMediaRepository_ValidSubType_Call {
 	_c.Call.Return(run)
 	return _c
 }

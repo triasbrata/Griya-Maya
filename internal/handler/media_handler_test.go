@@ -26,19 +26,16 @@ func TestMediaHandler_Popular_ParsesQueryAndFilter(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
 	wantFilter := domain.CatalogFilter{
-		Sort:              "title",
-		Ascending:         true,
-		Types:             []string{"video"},
-		IncludeGenres:     []string{"action"},
-		ExcludeGenres:     []string{"ecchi"},
-		IncludeCategories: []string{"webtoon"},
-		GenreMode:         domain.GenreModeAnd,
+		Sort:      "title",
+		Ascending: true,
+		Types:     []string{"manga"},
+		SubTypes:  []string{"manhwa"},
 	}
 	page := domain.MediaPage{Items: []domain.Media{{ID: "m1"}}, Page: 2, HasNext: true}
 	svc.EXPECT().Popular(mock.Anything, "src", 2, wantFilter).Return(page, nil)
 
 	c := newCtx("GET",
-		"/v1/sources/src/popular?page=2&sort=title&order=asc&type=video&genre=action&genreExclude=ecchi&category=webtoon&genreMode=and",
+		"/v1/sources/src/popular?page=2&sort=title&order=asc&type=manga&subType=manhwa",
 		map[string]string{"sourceId": "src"}, nil, "")
 	h.Popular(context.Background(), c)
 
@@ -52,7 +49,7 @@ func TestMediaHandler_Popular_DefaultsAndError(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
 	svc.EXPECT().
-		Popular(mock.Anything, "src", 1, domain.CatalogFilter{GenreMode: domain.GenreModeOr}).
+		Popular(mock.Anything, "src", 1, domain.CatalogFilter{}).
 		Return(domain.MediaPage{}, domain.ErrNotFound)
 
 	c := newCtx("GET", "/v1/sources/src/popular", map[string]string{"sourceId": "src"}, nil, "")
@@ -87,13 +84,13 @@ func TestMediaHandler_Recommendations_ParsesParams(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
 	page := domain.MediaPage{Items: []domain.Media{{ID: "m1"}}, Page: 2, HasNext: true}
-	// genres/exclude are comma-joinable csv; page is 1-based.
+	// subTypes/exclude are comma-joinable csv; page is 1-based.
 	svc.EXPECT().
-		Recommendations(mock.Anything, "src", []string{"action", "comedy"}, []string{"seed1", "seed2"}, 2).
+		Recommendations(mock.Anything, "src", []string{"manhwa", "manhua"}, []string{"seed1", "seed2"}, 2).
 		Return(page, nil)
 
 	c := newCtx("GET",
-		"/v1/sources/src/recommendations?genres=action,comedy&exclude=seed1,seed2&page=2",
+		"/v1/sources/src/recommendations?subTypes=manhwa,manhua&exclude=seed1,seed2&page=2",
 		map[string]string{"sourceId": "src"}, nil, "")
 	h.Recommendations(context.Background(), c)
 
@@ -108,7 +105,7 @@ func TestMediaHandler_Recommendations_ParsesParams(t *testing.T) {
 func TestMediaHandler_Recommendations_DefaultsAndError(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
-	// No genres/exclude/page → empty slices + page 1; error maps to status.
+	// No subTypes/exclude/page → empty slices + page 1; error maps to status.
 	svc.EXPECT().
 		Recommendations(mock.Anything, "src", []string(nil), []string(nil), 1).
 		Return(domain.MediaPage{}, domain.ErrNotFound)
@@ -118,31 +115,37 @@ func TestMediaHandler_Recommendations_DefaultsAndError(t *testing.T) {
 	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
 }
 
-func TestMediaHandler_Genres(t *testing.T) {
+func TestMediaHandler_SubTypes(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
-	svc.EXPECT().Genres(mock.Anything, "src").
-		Return([]domain.Taxonomy{{Slug: "action", Name: "Action"}}, nil)
+	svc.EXPECT().SubTypes(mock.Anything, "src").
+		Return([]domain.SubType{{Slug: "manhwa", Name: "Manhwa"}}, nil)
 
-	c := newCtx("GET", "/v1/sources/src/genres", map[string]string{"sourceId": "src"}, nil, "")
-	h.Genres(context.Background(), c)
+	c := newCtx("GET", "/v1/sources/src/subtypes", map[string]string{"sourceId": "src"}, nil, "")
+	h.SubTypes(context.Background(), c)
 
 	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
-	var got []domain.Taxonomy
+	var got []domain.SubType
 	decodeJSON(t, c, &got)
 	require.Len(t, got, 1)
-	assert.Equal(t, "action", got[0].Slug)
+	assert.Equal(t, "manhwa", got[0].Slug)
 }
 
-func TestMediaHandler_Categories(t *testing.T) {
+func TestMediaHandler_SubTypeCatalog(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
-	svc.EXPECT().Categories(mock.Anything, "src").
-		Return([]domain.Taxonomy{{Slug: "webtoon", Name: "Webtoon"}}, nil)
+	svc.EXPECT().SubTypeCatalog(mock.Anything).Return(map[domain.MediaType][]domain.SubType{
+		domain.MediaManga: {{Slug: "manga", Name: "Manga"}},
+	}, nil)
 
-	c := newCtx("GET", "/v1/sources/src/categories", map[string]string{"sourceId": "src"}, nil, "")
-	h.Categories(context.Background(), c)
+	c := newCtx("GET", "/v1/subtypes", nil, nil, "")
+	h.SubTypeCatalog(context.Background(), c)
+
 	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	var got map[string][]domain.SubType
+	decodeJSON(t, c, &got)
+	require.Len(t, got["manga"], 1)
+	assert.Equal(t, "manga", got["manga"][0].Slug)
 }
 
 func TestMediaHandler_Details_NotFound(t *testing.T) {
@@ -182,12 +185,12 @@ func TestMediaHandler_CreateMedia(t *testing.T) {
 	h, svc, _ := newMediaHandler(t)
 
 	wantReq := domain.MediaWriteRequest{
-		SourceID: "src", Type: domain.MediaVideo, URL: "u", Title: "T", Genres: []string{"Action"},
+		SourceID: "src", Type: domain.MediaVideo, URL: "u", Title: "T", SubType: "anime_series",
 	}
 	created := domain.Media{ID: "new", SourceID: "src", Type: domain.MediaVideo, Title: "T"}
 	svc.EXPECT().CreateMedia(mock.Anything, wantReq).Return(created, nil)
 
-	body := []byte(`{"sourceId":"src","type":"video","url":"u","title":"T","genres":["Action"]}`)
+	body := []byte(`{"sourceId":"src","type":"video","url":"u","title":"T","subType":"anime_series"}`)
 	c := newCtx("POST", "/v1/media", nil, body, "application/json")
 	h.CreateMedia(context.Background(), c)
 

@@ -176,6 +176,23 @@ make build-pdf && ./bin/server
 
 Open http://localhost:8080/docs.
 
+### Using MinIO (or any S3-compatible store)
+
+The object store talks the S3 API, so it can run against **MinIO** instead of R2
+— handy for fully-local development with no Cloudflare account. Point it at your
+endpoint via `.env`:
+
+```bash
+S3_ENDPOINT=http://localhost:9000   # empty = target R2 (endpoint from CF_ACCOUNT_ID)
+S3_REGION=us-east-1                 # empty defaults to "auto" (R2); MinIO wants us-east-1
+R2_BUCKET=manga
+R2_ACCESS_KEY_ID=minioadmin
+R2_SECRET_ACCESS_KEY=minioadmin
+```
+
+Presigned page/upload URLs will carry the `S3_ENDPOINT` host, so it must be
+reachable by the client (app/admin), not only from inside the container.
+
 ## Deploy to Cloudflare
 
 ```bash

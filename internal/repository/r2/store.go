@@ -1,6 +1,7 @@
-// Package r2 implements object storage against Cloudflare R2 through its
-// S3-compatible API. Cloudflare Containers do not receive native R2 bindings,
-// so we talk S3 with an R2 access-key pair.
+// Package r2 implements object storage against any S3-compatible backend
+// through the aws-sdk S3 client. By default it talks to Cloudflare R2 with an
+// R2 access-key pair (Containers get no native R2 bindings), but a configured
+// endpoint points the same client at a MinIO/self-hosted S3 store instead.
 package r2
 
 import (
@@ -27,13 +28,24 @@ type Store struct {
 	publicBaseURL string
 }
 
-// New builds an R2 store from config. It never dials until first use.
+// New builds an S3-compatible store from config. It never dials until first
+// use. When cfg.Endpoint is set it targets that backend (e.g. MinIO); otherwise
+// it derives the R2 account endpoint. Path-style addressing is used throughout,
+// which both R2 and MinIO support.
 func New(cfg config.R2Config) *Store {
+	region := cfg.Region
+	if region == "" {
+		region = "auto"
+	}
+	endpoint := cfg.Endpoint
+	if endpoint == "" {
+		endpoint = fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)
+	}
 	client := s3.New(s3.Options{
-		Region:       "auto",
+		Region:       region,
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
-		// R2 requires path-style addressing.
+		BaseEndpoint: aws.String(endpoint),
+		// Both R2 and MinIO work with path-style addressing.
 		UsePathStyle: true,
 	})
 	return &Store{
@@ -64,6 +76,38 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, string, error) {
 		ct = *out.ContentType
 	}
 	return data, ct, nil
+}
+
+// ListKeys returns every object key under prefix, following pagination. Async
+// cleanup uses it to expand an HLS bundle prefix (hls/{id}/) into the concrete
+// segment/playlist keys it then batch-deletes. An empty prefix would match the
+// whole bucket, so it is rejected to avoid a catastrophic list-all.
+func (s *Store) ListKeys(ctx context.Context, prefix string) ([]string, error) {
+	if strings.TrimSpace(prefix) == "" {
+		return nil, fmt.Errorf("r2 list: empty prefix")
+	}
+	var keys []string
+	var token *string
+	for {
+		out, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(s.bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("r2 list %q: %w", prefix, err)
+		}
+		for _, o := range out.Contents {
+			if o.Key != nil {
+				keys = append(keys, *o.Key)
+			}
+		}
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		token = out.NextContinuationToken
+	}
+	return keys, nil
 }
 
 // Put uploads bytes under key with the given content type.
