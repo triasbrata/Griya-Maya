@@ -63,6 +63,13 @@ func (s *Storage) verifyUser(ctx context.Context, email, password string) (strin
 	if user == nil || !verifyPassword(password, user.PasswordHash) {
 		return "", errors.New("invalid email or password")
 	}
+	// Self-registered accounts land unverified and stay locked out until an admin
+	// verifies them (PUT /v1/users/{id}); this is what makes "register" grant no
+	// usable access. Credentials are checked first so we don't leak which emails
+	// exist via a different error.
+	if !user.EmailVerified {
+		return "", errEmailNotVerified
+	}
 	return user.ID, nil
 }
 

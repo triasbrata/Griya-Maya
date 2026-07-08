@@ -37,10 +37,10 @@ const (
 // TaxonomyWriteKinds are the URL :kind path segments (plural) that each carry
 // their own taxonomy write scope (taksonomi.<kind>.write). Taxonomy reads are
 // gated by ScopeMangaRead instead, so they are not listed here.
-var TaxonomyWriteKinds = []string{"genres", "categories", "authors", "artists"}
+var TaxonomyWriteKinds = []string{"genres", "authors", "artists"}
 
 // ScopeTaxonomyWrite returns the per-kind taxonomy write scope for a URL :kind
-// segment, e.g. "genres" -> "taksonomi.genres.write".
+// segment, e.g. "categories" -> "taksonomi.categories.write".
 func ScopeTaxonomyWrite(kind string) string { return "taksonomi." + kind + ".write" }
 
 // isTaxonomyWriteKind reports whether kind is a known taxonomy URL segment.

@@ -9,9 +9,9 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 )
 
-// TaxonomyHandler manages the four normalized taxonomies through a single
+// TaxonomyHandler manages the three normalized taxonomies through a single
 // parametric resource: /v1/taxonomies/{kind}, where kind is one of
-// genres | categories | authors | artists.
+// genres | authors | artists.
 type TaxonomyHandler struct {
 	svc TaxonomyService
 }
@@ -26,8 +26,6 @@ func kindFromPath(seg string) (domain.TaxonomyKind, bool) {
 	switch seg {
 	case "genres":
 		return domain.TaxonomyGenre, true
-	case "categories":
-		return domain.TaxonomyCategory, true
 	case "authors":
 		return domain.TaxonomyAuthor, true
 	case "artists":
@@ -48,7 +46,7 @@ func (h *TaxonomyHandler) kind(c *app.RequestContext) (domain.TaxonomyKind, bool
 // @Summary  List all tags of a taxonomy.
 // @Tags     taxonomy
 // @Produce  json
-// @Param    kind path string true "Taxonomy" Enums(genres, categories, authors, artists)
+// @Param    kind path string true "Taxonomy" Enums(genres, authors, artists)
 // @Success  200 {array} domain.Taxonomy
 // @Failure  404 {object} handler.ErrorResponse
 // @Security BearerAuth
@@ -71,7 +69,7 @@ func (h *TaxonomyHandler) List(ctx context.Context, c *app.RequestContext) {
 // @Tags     taxonomy
 // @Accept   json
 // @Produce  json
-// @Param    kind    path string                     true "Taxonomy" Enums(genres, categories, authors, artists)
+// @Param    kind    path string                     true "Taxonomy" Enums(genres, authors, artists)
 // @Param    request body domain.TaxonomyWriteRequest true "Tag"
 // @Success  201 {object} domain.Taxonomy
 // @Failure  400 {object} handler.ErrorResponse
@@ -101,7 +99,7 @@ func (h *TaxonomyHandler) Create(ctx context.Context, c *app.RequestContext) {
 // @Tags     taxonomy
 // @Accept   json
 // @Produce  json
-// @Param    kind    path string                     true "Taxonomy" Enums(genres, categories, authors, artists)
+// @Param    kind    path string                     true "Taxonomy" Enums(genres, authors, artists)
 // @Param    id      path string                     true "Tag ID"
 // @Param    request body domain.TaxonomyWriteRequest true "Tag"
 // @Success  200 {object} domain.Taxonomy
@@ -130,7 +128,7 @@ func (h *TaxonomyHandler) Update(ctx context.Context, c *app.RequestContext) {
 // Delete godoc
 // @Summary  Delete a taxonomy tag (and its media links).
 // @Tags     taxonomy
-// @Param    kind path string true "Taxonomy" Enums(genres, categories, authors, artists)
+// @Param    kind path string true "Taxonomy" Enums(genres, authors, artists)
 // @Param    id   path string true "Tag ID"
 // @Success  204
 // @Failure  400 {object} handler.ErrorResponse

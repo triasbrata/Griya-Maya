@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -33,6 +34,13 @@ func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 
 	uid, err := l.storage.verifyUser(r.Context(), email, password)
 	if err != nil {
+		// Unverified accounts get the dedicated "under review" intercept page
+		// rather than a generic credential error, so a registered-but-pending
+		// user knows their sign-in is blocked on owner approval, not a typo.
+		if errors.Is(err, errEmailNotVerified) {
+			renderCard(w, loginData{ID: id, Email: email, Pending: true})
+			return
+		}
 		renderCard(w, loginData{ID: id, Error: "Invalid email or password"})
 		return
 	}

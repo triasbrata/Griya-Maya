@@ -87,6 +87,7 @@ var Module = fx.Options(
 	fx.Provide(
 		fx.Annotate(newMediaService, fx.As(new(handler.MediaService))),
 		fx.Annotate(service.NewSourceService, fx.As(new(handler.SourceService))),
+		fx.Annotate(service.NewSubTypeService, fx.As(new(handler.SubTypeService))),
 		fx.Annotate(newAdService, fx.As(new(handler.AdService))),
 		fx.Annotate(service.NewTaxonomyService, fx.As(new(handler.TaxonomyService))),
 		fx.Annotate(service.NewConvertService, fx.As(new(handler.ConvertService))),
@@ -100,6 +101,7 @@ var Module = fx.Options(
 		handler.NewHealthHandler,
 		handler.NewMediaHandler,
 		handler.NewSourceHandler,
+		handler.NewSubTypeHandler,
 		handler.NewAdHandler,
 		handler.NewTaxonomyHandler,
 		handler.NewConvertHandler,

@@ -71,12 +71,12 @@ func TestTaxonomyHandler_Create_BadInput(t *testing.T) {
 func TestTaxonomyHandler_Update(t *testing.T) {
 	h, svc := newTaxonomyHandler(t)
 
-	svc.EXPECT().Update(mock.Anything, domain.TaxonomyCategory, "c1", "Webtoon").
-		Return(domain.Taxonomy{ID: "c1", Slug: "webtoon", Name: "Webtoon"}, nil)
+	svc.EXPECT().Update(mock.Anything, domain.TaxonomyGenre, "g1", "Action").
+		Return(domain.Taxonomy{ID: "g1", Slug: "action", Name: "Action"}, nil)
 
-	body := []byte(`{"name":"Webtoon"}`)
-	c := newCtx("PUT", "/v1/taxonomies/categories/c1",
-		map[string]string{"kind": "categories", "id": "c1"}, body, "application/json")
+	body := []byte(`{"name":"Action"}`)
+	c := newCtx("PUT", "/v1/taxonomies/genres/g1",
+		map[string]string{"kind": "genres", "id": "g1"}, body, "application/json")
 	h.Update(context.Background(), c)
 	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
 }

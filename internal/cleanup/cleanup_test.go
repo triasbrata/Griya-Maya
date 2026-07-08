@@ -16,13 +16,24 @@ import (
 
 // fakeDeleter records the keys it was asked to delete and can fail on demand.
 type fakeDeleter struct {
-	called [][]string
-	err    error
+	called   [][]string        // keys passed to DeleteObjects
+	listed   []string          // prefixes passed to ListKeys
+	contents map[string][]string // prefix → keys returned by ListKeys
+	err      error             // DeleteObjects error
+	listErr  error             // ListKeys error
 }
 
 func (f *fakeDeleter) DeleteObjects(_ context.Context, keys []string) error {
 	f.called = append(f.called, keys)
 	return f.err
+}
+
+func (f *fakeDeleter) ListKeys(_ context.Context, prefix string) ([]string, error) {
+	f.listed = append(f.listed, prefix)
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.contents[prefix], nil
 }
 
 // unconfiguredClient is a queue client with no creds → Configured() == false.
@@ -80,6 +91,56 @@ func TestWorker_Process_DeleteErrorRetries(t *testing.T) {
 	ack := w.process(context.Background(), queue.Message{Body: body})
 
 	assert.False(t, ack) // transient failure → retry
+}
+
+func TestWorker_Process_ExpandsPrefixesThenDeletes(t *testing.T) {
+	del := &fakeDeleter{contents: map[string][]string{
+		"hls/vid1/": {"hls/vid1/index.m3u8", "hls/vid1/v720_init.mp4", "hls/vid1/v720_0.m4s"},
+	}}
+	w := NewWorker(unconfiguredClient(), del)
+
+	body, _ := json.Marshal(domain.PageCleanupJob{
+		Keys:     []string{"pages/a.avif"},
+		Prefixes: []string{"hls/vid1/"},
+	})
+	ack := w.process(context.Background(), queue.Message{Body: body})
+
+	assert.True(t, ack)
+	assert.Equal(t, []string{"hls/vid1/"}, del.listed)
+	require.Len(t, del.called, 1)
+	// Explicit keys + everything listed under the prefix, one batch.
+	assert.Equal(t, []string{
+		"pages/a.avif",
+		"hls/vid1/index.m3u8", "hls/vid1/v720_init.mp4", "hls/vid1/v720_0.m4s",
+	}, del.called[0])
+}
+
+func TestWorker_Process_ListFailureRetries(t *testing.T) {
+	del := &fakeDeleter{listErr: errors.New("r2 list down")}
+	w := NewWorker(unconfiguredClient(), del)
+
+	body, _ := json.Marshal(domain.PageCleanupJob{Prefixes: []string{"hls/vid1/"}})
+	ack := w.process(context.Background(), queue.Message{Body: body})
+
+	assert.False(t, ack)       // transient → retry
+	assert.Empty(t, del.called) // never reached delete
+}
+
+func TestWorker_Process_EmptyPrefixListingIsAcked(t *testing.T) {
+	del := &fakeDeleter{contents: map[string][]string{"hls/gone/": nil}}
+	w := NewWorker(unconfiguredClient(), del)
+
+	body, _ := json.Marshal(domain.PageCleanupJob{Prefixes: []string{"hls/gone/"}})
+	ack := w.process(context.Background(), queue.Message{Body: body})
+
+	assert.True(t, ack)         // already-cleaned prefix → nothing to delete
+	assert.Empty(t, del.called) // no delete call for an empty key set
+}
+
+func TestProducer_EnqueuePrefixes_Noops(t *testing.T) {
+	p := NewProducer(unconfiguredClient())
+	require.NoError(t, p.EnqueuePrefixes(context.Background(), nil))
+	require.NoError(t, p.EnqueuePrefixes(context.Background(), []string{"hls/x/"}))
 }
 
 func TestWorker_StartStop_NoopWhenUnconfigured(t *testing.T) {

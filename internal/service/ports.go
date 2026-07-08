@@ -17,11 +17,11 @@ type MediaRepository interface {
 	// Reads.
 	List(ctx context.Context, sourceID, order string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
 	Search(ctx context.Context, sourceID, query string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error)
-	// Recommend ranks a source's media by genre overlap with genres (desc), tie-
-	// broken by the popular order; zero-overlap and exclude ids are omitted.
-	Recommend(ctx context.Context, sourceID string, genres, exclude []string, page, perPage int) (domain.MediaPage, error)
-	Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
-	Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error)
+	// Recommend ranks a source's media by shared sub-type with subTypes (desc),
+	// tie-broken by the popular order; non-matching and exclude ids are omitted.
+	Recommend(ctx context.Context, sourceID string, subTypes, exclude []string, page, perPage int) (domain.MediaPage, error)
+	// SubTypes lists the distinct sub-types present in a source's catalog.
+	SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error)
 	Get(ctx context.Context, id string) (domain.Media, error)
 	Chapters(ctx context.Context, mediaID string) ([]domain.Chapter, error)
 	ChapterByID(ctx context.Context, id string) (domain.Chapter, error)
@@ -46,11 +46,20 @@ type MediaRepository interface {
 	// chapters, used to schedule R2 cleanup on media deletion.
 	PageKeysForMedia(ctx context.Context, mediaID string) ([]string, error)
 
-	// Taxonomy management (genre/category/author/artist).
+	// Taxonomy management (genre/author/artist).
 	ListTaxonomy(ctx context.Context, kind domain.TaxonomyKind) ([]domain.Taxonomy, error)
 	CreateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, name string) (domain.Taxonomy, error)
 	UpdateTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id, name string) (domain.Taxonomy, error)
 	DeleteTaxonomy(ctx context.Context, kind domain.TaxonomyKind, id string) error
+
+	// Managed sub-type vocabulary (per-type `sub_type` table).
+	// SubTypeVocab returns the full vocabulary grouped by media type.
+	SubTypeVocab(ctx context.Context) (map[domain.MediaType][]domain.SubType, error)
+	// ValidSubType reports whether slug is allowed for media type t (empty is ok).
+	ValidSubType(ctx context.Context, t domain.MediaType, slug string) (bool, error)
+	CreateSubType(ctx context.Context, st domain.SubType) error
+	UpdateSubType(ctx context.Context, slug string, st domain.SubType) error
+	DeleteSubType(ctx context.Context, slug string) error
 }
 
 // JobRepository persists a chapter's page rows (implemented by d1.JobRepo). It
@@ -72,6 +81,9 @@ type CoverMirrorQueue interface {
 // left behind rather than failing the request).
 type CleanupQueue interface {
 	Enqueue(ctx context.Context, keys []string) error
+	// EnqueuePrefixes schedules recursive deletion of every object under each
+	// prefix (HLS video bundles, where only the playlist key is recorded).
+	EnqueuePrefixes(ctx context.Context, prefixes []string) error
 }
 
 // SourceRepository persists content sources (implemented by d1.SourceRepo).

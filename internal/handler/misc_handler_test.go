@@ -61,14 +61,9 @@ func TestMediaHandler_ErrorPaths(t *testing.T) {
 	h.Search(context.Background(), c)
 	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
 
-	svc.EXPECT().Genres(mock.Anything, "src").Return(nil, domain.ErrNotFound)
-	c = newCtx("GET", "/v1/sources/src/genres", map[string]string{"sourceId": "src"}, nil, "")
-	h.Genres(context.Background(), c)
-	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
-
-	svc.EXPECT().Categories(mock.Anything, "src").Return(nil, domain.ErrNotFound)
-	c = newCtx("GET", "/v1/sources/src/categories", map[string]string{"sourceId": "src"}, nil, "")
-	h.Categories(context.Background(), c)
+	svc.EXPECT().SubTypes(mock.Anything, "src").Return(nil, domain.ErrNotFound)
+	c = newCtx("GET", "/v1/sources/src/subtypes", map[string]string{"sourceId": "src"}, nil, "")
+	h.SubTypes(context.Background(), c)
 	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
 
 	svc.EXPECT().Chapters(mock.Anything, "m1").Return(nil, domain.ErrNotFound)

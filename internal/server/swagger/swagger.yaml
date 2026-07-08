@@ -147,11 +147,6 @@ components:
             type: string
           type: array
           uniqueItems: false
-        categories:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
         coverUrl:
           type: string
         description:
@@ -175,6 +170,8 @@ components:
           - StatusHiatus
           - StatusCancelled
           - StatusPublishing
+        subType:
+          type: string
         title:
           type: string
         type:
@@ -259,11 +256,6 @@ components:
             type: string
           type: array
           uniqueItems: false
-        categories:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
         coverUrl:
           type: string
         description:
@@ -285,6 +277,8 @@ components:
           - StatusHiatus
           - StatusCancelled
           - StatusPublishing
+        subType:
+          type: string
         title:
           type: string
         type:
@@ -346,6 +340,16 @@ components:
           type: string
         lang:
           type: string
+        mediaTypes:
+          description: |-
+            MediaTypes is the distinct set of media types this source currently
+            carries (subset of manga|video|novel), sorted alphabetically. Populated on
+            the listing paths so the reader can tell what a source offers without a
+            per-type probe; omitted (never null) when the source has no media.
+          items:
+            type: string
+          type: array
+          uniqueItems: false
         name:
           type: string
         updatedAt:
@@ -385,6 +389,32 @@ components:
         width:
           type: integer
       type: object
+    domain.SubType:
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          type: string
+          x-enum-varnames:
+          - MediaManga
+          - MediaVideo
+          - MediaNovel
+      type: object
+    domain.SubTypeWriteRequest:
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          type: string
+          x-enum-varnames:
+          - MediaManga
+          - MediaVideo
+          - MediaNovel
+      type: object
     domain.Taxonomy:
       properties:
         id:
@@ -397,6 +427,26 @@ components:
     domain.TaxonomyWriteRequest:
       properties:
         name:
+          type: string
+      type: object
+    domain.VideoPresignFile:
+      properties:
+        contentType:
+          type: string
+        name:
+          type: string
+      type: object
+    domain.VideoPresignRequest:
+      properties:
+        files:
+          description: Files are every part of the bundle (playlist(s), init, segments).
+            Required.
+          items:
+            $ref: '#/components/schemas/domain.VideoPresignFile'
+          type: array
+          uniqueItems: false
+        prefix:
+          description: Prefix is an optional target R2 key prefix; defaults to hls/{uuid}/.
           type: string
       type: object
     domain.VideoRegisterRequest:
@@ -528,6 +578,18 @@ components:
         token_endpoint_auth_method:
           type: string
       type: object
+    oidc.createInviteRequest:
+      properties:
+        email:
+          description: optional; blank = any email may redeem
+          type: string
+        expires_at:
+          description: optional unix seconds; 0 = never
+          type: integer
+        note:
+          description: optional admin label
+          type: string
+      type: object
     oidc.createUserRequest:
       properties:
         email:
@@ -544,6 +606,34 @@ components:
         error:
           type: string
         error_description:
+          type: string
+      type: object
+    oidc.inviteRecord:
+      properties:
+        code:
+          type: string
+        created_at:
+          type: integer
+        email:
+          type: string
+        expires_at:
+          type: integer
+        note:
+          type: string
+        used_at:
+          type: integer
+        used_by:
+          type: string
+      type: object
+    oidc.registerRequest:
+      properties:
+        code:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        password:
           type: string
       type: object
     oidc.registrationResponse:
@@ -632,6 +722,29 @@ components:
             $ref: '#/components/schemas/service.PresignItem'
           type: array
           uniqueItems: false
+        prefix:
+          type: string
+      type: object
+    service.VideoPresignItem:
+      properties:
+        contentType:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+      type: object
+    service.VideoPresignResult:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/service.VideoPresignItem'
+          type: array
+          uniqueItems: false
+        playlistKey:
+          type: string
         prefix:
           type: string
       type: object
@@ -1186,6 +1299,122 @@ paths:
       summary: Update a source (admin)
       tags:
       - sources
+  /v1/admin/subtypes:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.SubType'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List all sub-types (admin)
+      tags:
+      - subtypes
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.SubTypeWriteRequest'
+        description: New sub-type
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.SubType'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Create a sub-type (admin)
+      tags:
+      - subtypes
+  /v1/admin/subtypes/{slug}:
+    delete:
+      parameters:
+      - description: Sub-type slug
+        in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Delete a sub-type (admin)
+      tags:
+      - subtypes
+    put:
+      parameters:
+      - description: Sub-type slug
+        in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.SubTypeWriteRequest'
+        description: Updated fields
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/domain.SubType'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Update a sub-type (admin)
+      tags:
+      - subtypes
   /v1/ads:
     get:
       description: Active house-ad creatives the reader interleaves between pages.
@@ -1767,6 +1996,107 @@ paths:
       summary: Proxy an AVIF page object from R2 (retired; gated fallback).
       tags:
       - reader
+  /v1/invites:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/oidc.inviteRecord'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: List registration invites
+      tags:
+      - users
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/oidc.createInviteRequest'
+        description: Invite
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.inviteRecord'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: Create a registration invite
+      tags:
+      - users
+  /v1/invites/{code}:
+    delete:
+      parameters:
+      - description: Invite code
+        in: path
+        name: code
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: Revoke a registration invite
+      tags:
+      - users
   /v1/media:
     post:
       requestBody:
@@ -1959,6 +2289,46 @@ paths:
         page.
       tags:
       - novel
+  /v1/register:
+    post:
+      description: Public self-service signup gated by a single-use invite code. The
+        new account is created unverified (email_verified=false) and cannot log in
+        until an admin verifies it.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/oidc.registerRequest'
+        description: Registration
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userRecord'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Bad Request
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Conflict
+      summary: Register a new account with an invite
+      tags:
+      - users
   /v1/sources:
     get:
       description: Sources the reader can browse. Gated by manga.read.
@@ -1986,48 +2356,6 @@ paths:
       security:
       - BearerAuth: []
       summary: List enabled sources
-      tags:
-      - catalog
-  /v1/sources/{sourceId}/categories:
-    get:
-      parameters:
-      - description: Source ID
-        in: path
-        name: sourceId
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/domain.Taxonomy'
-                type: array
-          description: OK
-      summary: Filterable categories for a source
-      tags:
-      - catalog
-  /v1/sources/{sourceId}/genres:
-    get:
-      parameters:
-      - description: Source ID
-        in: path
-        name: sourceId
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/domain.Taxonomy'
-                type: array
-          description: OK
-      summary: Filterable genres for a source
       tags:
       - catalog
   /v1/sources/{sourceId}/latest:
@@ -2070,42 +2398,13 @@ paths:
           items:
             type: string
           type: array
-      - description: Include genre slug (repeatable)
+      - description: 'Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua'
         in: query
-        name: genre
+        name: subType
         schema:
           items:
             type: string
           type: array
-      - description: Exclude genre slug (repeatable)
-        in: query
-        name: genreExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Include category slug (repeatable)
-        in: query
-        name: category
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Exclude category slug (repeatable)
-        in: query
-        name: categoryExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Combine included genres/categories
-        in: query
-        name: genreMode
-        schema:
-          enum:
-          - or
-          - and
-          type: string
       responses:
         "200":
           content:
@@ -2156,42 +2455,13 @@ paths:
           items:
             type: string
           type: array
-      - description: Include genre slug (repeatable)
+      - description: 'Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua'
         in: query
-        name: genre
+        name: subType
         schema:
           items:
             type: string
           type: array
-      - description: Exclude genre slug (repeatable)
-        in: query
-        name: genreExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Include category slug (repeatable)
-        in: query
-        name: category
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Exclude category slug (repeatable)
-        in: query
-        name: categoryExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Combine included genres/categories
-        in: query
-        name: genreMode
-        schema:
-          enum:
-          - or
-          - and
-          type: string
       responses:
         "200":
           content:
@@ -2204,11 +2474,11 @@ paths:
       - catalog
   /v1/sources/{sourceId}/recommendations:
     get:
-      description: Ranks a source's catalog by genre overlap with the supplied genres
+      description: Ranks a source's catalog by shared sub-type with the supplied subTypes
         (aggregated client-side from recent reading; history stays on the client),
-        most-overlap first, tie-broken by the popular order. Media sharing no requested
-        genre, and any id in exclude, are omitted. With no genres it falls back to
-        the source's popular feed.
+        tie-broken by the popular order. Media whose sub-type is not requested, and
+        any id in exclude, are omitted. With no subTypes it falls back to the source's
+        popular feed.
       parameters:
       - description: Source ID
         in: path
@@ -2216,9 +2486,9 @@ paths:
         required: true
         schema:
           type: string
-      - description: Comma-separated genre slugs/names to match
+      - description: Comma-separated sub-type slugs to match
         in: query
-        name: genres
+        name: subTypes
         schema:
           type: string
       - description: Comma-separated media ids to omit (already-read / seed)
@@ -2287,42 +2557,13 @@ paths:
           items:
             type: string
           type: array
-      - description: Include genre slug (repeatable)
+      - description: 'Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua'
         in: query
-        name: genre
+        name: subType
         schema:
           items:
             type: string
           type: array
-      - description: Exclude genre slug (repeatable)
-        in: query
-        name: genreExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Include category slug (repeatable)
-        in: query
-        name: category
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Exclude category slug (repeatable)
-        in: query
-        name: categoryExclude
-        schema:
-          items:
-            type: string
-          type: array
-      - description: Combine included genres/categories
-        in: query
-        name: genreMode
-        schema:
-          enum:
-          - or
-          - and
-          type: string
       responses:
         "200":
           content:
@@ -2331,6 +2572,27 @@ paths:
                 $ref: '#/components/schemas/domain.MediaPage'
           description: OK
       summary: Search media within a source
+      tags:
+      - catalog
+  /v1/sources/{sourceId}/subtypes:
+    get:
+      parameters:
+      - description: Source ID
+        in: path
+        name: sourceId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/domain.SubType'
+                type: array
+          description: OK
+      summary: Filterable sub-types present in a source
       tags:
       - catalog
   /v1/stream/{key}:
@@ -2367,6 +2629,25 @@ paths:
         domain).
       tags:
       - video
+  /v1/subtypes:
+    get:
+      description: Returns the managed set of sub-types allowed per media type (manga|novel|video)
+        — the source of truth for populating a sub-type selector. Backed by the `sub_type`
+        table.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  items:
+                    $ref: '#/components/schemas/domain.SubType'
+                  type: array
+                type: object
+          description: OK
+      summary: Sub-type vocabulary grouped by media type
+      tags:
+      - catalog
   /v1/taxonomies/{kind}:
     get:
       parameters:
@@ -2377,7 +2658,6 @@ paths:
         schema:
           enum:
           - genres
-          - categories
           - authors
           - artists
           type: string
@@ -2410,7 +2690,6 @@ paths:
         schema:
           enum:
           - genres
-          - categories
           - authors
           - artists
           type: string
@@ -2455,7 +2734,6 @@ paths:
         schema:
           enum:
           - genres
-          - categories
           - authors
           - artists
           type: string
@@ -2494,7 +2772,6 @@ paths:
         schema:
           enum:
           - genres
-          - categories
           - authors
           - artists
           type: string
@@ -2720,6 +2997,37 @@ paths:
       security:
       - BearerAuth: []
       summary: Register an uploaded HLS playlist as a chapter's video page.
+      tags:
+      - video
+  /v1/video/presign:
+    post:
+      description: 'Preferred over /v1/video/upload: the browser PUTs each bundle
+        file straight to R2 (no container hop), then registers the returned playlistKey
+        via POST /v1/video. Send every file''s name (and optional contentType); keys
+        keep the basenames under one prefix so relative segment URIs resolve.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/domain.VideoPresignRequest'
+        description: Bundle file names to presign
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/service.VideoPresignResult'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+      security:
+      - BearerAuth: []
+      summary: Mint presigned R2 PUT URLs for an HLS bundle (direct browser→R2 upload).
       tags:
       - video
   /v1/video/upload:

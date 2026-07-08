@@ -37,6 +37,7 @@ type RouterParams struct {
 	Health     *handler.HealthHandler
 	Media      *handler.MediaHandler
 	Source     *handler.SourceHandler
+	SubType    *handler.SubTypeHandler
 	Ad         *handler.AdHandler
 	Taxonomy   *handler.TaxonomyHandler
 	Convert    *handler.ConvertHandler
@@ -104,8 +105,10 @@ func New(p RouterParams) *server.Hertz {
 		v1.GET("/sources/:sourceId/latest", p.Media.Latest)
 		v1.GET("/sources/:sourceId/search", p.Media.Search)
 		v1.GET("/sources/:sourceId/recommendations", p.Media.Recommendations)
-		v1.GET("/sources/:sourceId/genres", p.Media.Genres)
-		v1.GET("/sources/:sourceId/categories", p.Media.Categories)
+		v1.GET("/sources/:sourceId/subtypes", p.Media.SubTypes)
+		// Managed sub-type vocabulary grouped by media type (source of truth for
+		// admin/client selectors). Public — not derived from any source.
+		v1.GET("/subtypes", p.Media.SubTypeCatalog)
 		v1.GET("/media/:id", p.Media.Details)
 		v1.GET("/media/:id/chapters", p.Media.Chapters)
 		// Previous/next chapter around a chapter — metadata only (no R2 page
@@ -126,8 +129,8 @@ func New(p RouterParams) *server.Hertz {
 		read.GET("/chapters/:id/pages", p.Media.Pages)
 		read.GET("/image", p.Media.Image)
 
-		// Taxonomy reads share the reader scope: listing genres/categories/
-		// authors/artists needs only manga.read.
+		// Taxonomy reads share the reader scope: listing categories/authors/
+		// artists needs only manga.read.
 		read.GET("/taxonomies/:kind", p.Taxonomy.List)
 
 		// Enabled source directory for the reader (end client).
@@ -144,6 +147,8 @@ func New(p RouterParams) *server.Hertz {
 	{
 		adminRead.GET("/sources", p.Source.AdminList)
 		adminRead.GET("/sources/:id", p.Source.Get)
+		// Managed sub-type vocabulary CRUD (list).
+		adminRead.GET("/subtypes", p.SubType.List)
 		// Inspect a chapter's pages with raw R2 keys (for artifact management).
 		adminRead.GET("/chapters/:id/pages", p.Media.AdminChapterPages)
 		// House-ad management reads (full set incl. inactive, raw R2 keys).
@@ -155,6 +160,10 @@ func New(p RouterParams) *server.Hertz {
 		adminWrite.POST("/sources", p.Source.Create)
 		adminWrite.PUT("/sources/:id", p.Source.Update)
 		adminWrite.DELETE("/sources/:id", p.Source.Delete)
+		// Managed sub-type vocabulary CRUD (writes).
+		adminWrite.POST("/subtypes", p.SubType.Create)
+		adminWrite.PUT("/subtypes/:slug", p.SubType.Update)
+		adminWrite.DELETE("/subtypes/:slug", p.SubType.Delete)
 		// Delete a single page + its R2 artifact.
 		adminWrite.DELETE("/chapters/:id/pages/:idx", p.Media.AdminDeleteChapterPage)
 		// House-ad management writes. Presign mints a direct-to-R2 creative upload
@@ -184,8 +193,8 @@ func New(p RouterParams) *server.Hertz {
 
 	// Taxonomy mutations, gated per kind by taksonomi.<kind>.write (resolved from
 	// the :kind path param) so each taxonomy can be delegated independently.
-	// /v1/taxonomies/{kind} where kind is one of genres | categories | authors |
-	// artists. Reads live in the manga.read group above.
+	// /v1/taxonomies/{kind} where kind is one of genres | authors | artists.
+	// Reads live in the manga.read group above.
 	taxonomy := h.Group("/v1", p.OIDC.MiddlewareTaxonomyWrite())
 	{
 		taxonomy.POST("/taxonomies/:kind", p.Taxonomy.Create)
@@ -224,6 +233,23 @@ func New(p RouterParams) *server.Hertz {
 		usersWrite.DELETE("/:id", p.UserAdmin.Delete)
 	}
 
+	// Registration invites (own path to avoid colliding with /v1/users/:id).
+	// Admins mint/list/revoke invites under the same users.read/write scopes.
+	invitesRead := h.Group("/v1/invites", p.OIDC.MiddlewareScope(oidc.ScopeUsersRead))
+	{
+		invitesRead.GET("", p.UserAdmin.ListInvites)
+	}
+	invitesWrite := h.Group("/v1/invites", p.OIDC.MiddlewareScope(oidc.ScopeUsersWrite))
+	{
+		invitesWrite.POST("", p.UserAdmin.CreateInvite)
+		invitesWrite.DELETE("/:code", p.UserAdmin.DeleteInvite)
+	}
+
+	// Public self-service registration: no bearer token, gated instead by a
+	// single-use invite code. New accounts land unverified and cannot log in
+	// until an admin verifies them.
+	h.POST("/v1/register", p.UserAdmin.Register)
+
 	// Browser-side ingest (protected by the OIDC access-token middleware): mint
 	// presigned R2 PUT URLs so the browser uploads its AVIF pages directly. The
 	// uploaded pages are attached to a chapter via POST /v1/chapters/:id/pages
@@ -237,6 +263,9 @@ func New(p RouterParams) *server.Hertz {
 	// chapter's video page.
 	video := h.Group("/v1/video", p.OIDC.Middleware())
 	{
+		// Preferred path: presign direct browser→R2 upload (no container hop).
+		video.POST("/presign", p.Video.Presign)
+		// Legacy path: stream the whole bundle through the container into R2.
 		video.POST("/upload", p.Video.Upload)
 		video.POST("", p.Video.Register)
 	}

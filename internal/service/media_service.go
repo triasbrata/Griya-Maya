@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -72,14 +73,47 @@ func (s *MediaService) enqueueCoverMirror(ctx context.Context, mediaID, cover st
 	_ = s.coverQueue.Enqueue(ctx, domain.CoverMirrorJob{MediaID: mediaID, SourceURL: cover})
 }
 
-// enqueueCleanup schedules orphaned R2 object keys for async deletion after
-// their rows have been removed (best-effort: a failed enqueue never fails the
-// delete — the keys simply stay in R2 until a future cleanup).
+// enqueueCleanup schedules orphaned R2 artifacts for async deletion after their
+// rows have been removed (best-effort: a failed enqueue never fails the delete —
+// the objects simply stay in R2 until a future cleanup). Keys that belong to an
+// HLS video bundle (hls/{id}/…) are collapsed to their prefix so the whole
+// bundle — init + every segment, not just the recorded playlist key — is removed.
 func (s *MediaService) enqueueCleanup(ctx context.Context, keys []string) {
 	if s.cleanupQueue == nil || len(keys) == 0 {
 		return
 	}
-	_ = s.cleanupQueue.Enqueue(ctx, keys)
+	plain, prefixes := splitHLSPrefixes(keys)
+	if len(plain) > 0 {
+		_ = s.cleanupQueue.Enqueue(ctx, plain)
+	}
+	if len(prefixes) > 0 {
+		_ = s.cleanupQueue.EnqueuePrefixes(ctx, prefixes)
+	}
+}
+
+// splitHLSPrefixes partitions cleanup keys into plain object keys and HLS bundle
+// prefixes. A video chapter records only its playlist key (hls/{id}/index.m3u8),
+// but the init + segment objects live beside it under hls/{id}/ — so any key
+// under an hls/{id}/ directory is collapsed to that prefix for recursive
+// deletion (deduped). Everything else (pages/, ads/, covers) stays an exact key.
+func splitHLSPrefixes(keys []string) (plain, prefixes []string) {
+	seen := map[string]bool{}
+	for _, k := range keys {
+		dir := path.Dir(strings.TrimSpace(k))
+		// dir "hls/{id}" (has the id segment) → recursive prefix. A bare "hls"
+		// (HasPrefix fails) falls through to an exact-key delete, never a
+		// bucket-wide "hls/" wipe.
+		if strings.HasPrefix(dir, "hls/") {
+			p := dir + "/"
+			if !seen[p] {
+				seen[p] = true
+				prefixes = append(prefixes, p)
+			}
+			continue
+		}
+		plain = append(plain, k)
+	}
+	return plain, prefixes
 }
 
 // Popular returns the most popular media for a source, honoring the filter.
@@ -110,19 +144,20 @@ func (s *MediaService) Search(ctx context.Context, sourceID, query string, page 
 }
 
 // Recommendations returns content-based recommendations for a source: its
-// catalog ranked by genre overlap with genres (which the client aggregates from
-// the user's recent reading — history stays on the client). Media whose id is in
-// exclude, or that share no requested genre, are omitted. With no genres it falls
-// back to the source's popular feed so the endpoint always returns something.
-func (s *MediaService) Recommendations(ctx context.Context, sourceID string, genres, exclude []string, page int) (domain.MediaPage, error) {
+// catalog ranked by shared sub-type with subTypes (which the client aggregates
+// from the user's recent reading — history stays on the client). Media whose id
+// is in exclude, or whose sub-type is not requested, are omitted. With no
+// subTypes it falls back to the source's popular feed so the endpoint always
+// returns something.
+func (s *MediaService) Recommendations(ctx context.Context, sourceID string, subTypes, exclude []string, page int) (domain.MediaPage, error) {
 	var (
 		res domain.MediaPage
 		err error
 	)
-	if len(genres) == 0 {
+	if len(subTypes) == 0 {
 		res, err = s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, domain.CatalogFilter{})
 	} else {
-		res, err = s.repo.Recommend(ctx, sourceID, genres, exclude, page, domain.CatalogPageSize)
+		res, err = s.repo.Recommend(ctx, sourceID, subTypes, exclude, page, domain.CatalogPageSize)
 	}
 	if err != nil {
 		return domain.MediaPage{}, err
@@ -130,14 +165,15 @@ func (s *MediaService) Recommendations(ctx context.Context, sourceID string, gen
 	return s.resolveCovers(ctx, res), nil
 }
 
-// Genres lists the distinct filterable genres seen across a source's catalog.
-func (s *MediaService) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	return s.repo.Genres(ctx, sourceID)
+// SubTypes lists the distinct filterable sub-types present in a source's catalog.
+func (s *MediaService) SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error) {
+	return s.repo.SubTypes(ctx, sourceID)
 }
 
-// Categories lists the distinct filterable categories seen across a source's catalog.
-func (s *MediaService) Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	return s.repo.Categories(ctx, sourceID)
+// SubTypeCatalog returns the managed sub-type vocabulary grouped by media type —
+// the source of truth for admin/client dropdowns (GET /v1/subtypes).
+func (s *MediaService) SubTypeCatalog(ctx context.Context) (map[domain.MediaType][]domain.SubType, error) {
+	return s.repo.SubTypeVocab(ctx)
 }
 
 // Details returns one media entry.
@@ -233,6 +269,9 @@ func (s *MediaService) CreateMedia(ctx context.Context, req domain.MediaWriteReq
 	if err != nil {
 		return domain.Media{}, err
 	}
+	if err := s.validateSubType(ctx, m.Type, m.SubType); err != nil {
+		return domain.Media{}, err
+	}
 	if err := s.repo.CreateMedia(ctx, m); err != nil {
 		return domain.Media{}, fmt.Errorf("create media: %w", err)
 	}
@@ -257,6 +296,9 @@ func (s *MediaService) UpdateMedia(ctx context.Context, id string, req domain.Me
 	}
 	m, err := mediaFromRequest(id, req)
 	if err != nil {
+		return domain.Media{}, err
+	}
+	if err := s.validateSubType(ctx, m.Type, m.SubType); err != nil {
 		return domain.Media{}, err
 	}
 	// Preserve an already-mirrored cover when the client re-submits the presigned
@@ -334,16 +376,33 @@ func mediaFromRequest(id string, req domain.MediaWriteRequest) (domain.Media, er
 		ID:          id,
 		SourceID:    req.SourceID,
 		Type:        mtype,
+		SubType:     strings.TrimSpace(req.SubType),
 		URL:         url,
 		Title:       req.Title,
 		CoverURL:    req.CoverURL,
 		Description: req.Description,
 		Status:      status,
 		Genres:      req.Genres,
-		Categories:  req.Categories,
 		Authors:     req.Authors,
 		Artists:     req.Artists,
 	}, nil
+}
+
+// validateSubType enforces that a non-empty sub-type belongs to the media type's
+// managed vocabulary (the `sub_type` table). An empty sub-type is always allowed
+// (it is optional), so it never hits the DB.
+func (s *MediaService) validateSubType(ctx context.Context, mtype domain.MediaType, subType string) error {
+	if subType == "" {
+		return nil
+	}
+	ok, err := s.repo.ValidSubType(ctx, mtype, subType)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: subType %q is not valid for type %q", domain.ErrInvalidInput, subType, mtype)
+	}
+	return nil
 }
 
 // --- chapter management ---

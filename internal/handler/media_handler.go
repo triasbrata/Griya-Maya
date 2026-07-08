@@ -32,11 +32,7 @@ func NewMediaHandler(svc MediaService, store service.ObjectStore) *MediaHandler 
 // @Param    sort            query string   false "Sort key" Enums(popular, latest, updated, rating, title)
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
-// @Param    genre           query []string false "Include genre slug (repeatable)"
-// @Param    genreExclude    query []string false "Exclude genre slug (repeatable)"
-// @Param    category        query []string false "Include category slug (repeatable)"
-// @Param    categoryExclude query []string false "Exclude category slug (repeatable)"
-// @Param    genreMode       query string   false "Combine included genres/categories" Enums(or, and)
+// @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/popular [get]
 func (h *MediaHandler) Popular(ctx context.Context, c *app.RequestContext) {
@@ -58,11 +54,7 @@ func (h *MediaHandler) Popular(ctx context.Context, c *app.RequestContext) {
 // @Param    sort            query string   false "Sort key" Enums(popular, latest, updated, rating, title)
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
-// @Param    genre           query []string false "Include genre slug (repeatable)"
-// @Param    genreExclude    query []string false "Exclude genre slug (repeatable)"
-// @Param    category        query []string false "Include category slug (repeatable)"
-// @Param    categoryExclude query []string false "Exclude category slug (repeatable)"
-// @Param    genreMode       query string   false "Combine included genres/categories" Enums(or, and)
+// @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/latest [get]
 func (h *MediaHandler) Latest(ctx context.Context, c *app.RequestContext) {
@@ -85,11 +77,7 @@ func (h *MediaHandler) Latest(ctx context.Context, c *app.RequestContext) {
 // @Param    sort            query string   false "Sort key" Enums(popular, latest, updated, rating, title)
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
-// @Param    genre           query []string false "Include genre slug (repeatable)"
-// @Param    genreExclude    query []string false "Exclude genre slug (repeatable)"
-// @Param    category        query []string false "Include category slug (repeatable)"
-// @Param    categoryExclude query []string false "Exclude category slug (repeatable)"
-// @Param    genreMode       query string   false "Combine included genres/categories" Enums(or, and)
+// @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/search [get]
 func (h *MediaHandler) Search(ctx context.Context, c *app.RequestContext) {
@@ -104,17 +92,17 @@ func (h *MediaHandler) Search(ctx context.Context, c *app.RequestContext) {
 
 // Recommendations godoc
 // @Summary  Content-based recommendations for a source
-// @Description Ranks a source's catalog by genre overlap with the supplied genres (aggregated client-side from recent reading; history stays on the client), most-overlap first, tie-broken by the popular order. Media sharing no requested genre, and any id in exclude, are omitted. With no genres it falls back to the source's popular feed.
+// @Description Ranks a source's catalog by shared sub-type with the supplied subTypes (aggregated client-side from recent reading; history stays on the client), tie-broken by the popular order. Media whose sub-type is not requested, and any id in exclude, are omitted. With no subTypes it falls back to the source's popular feed.
 // @Tags     catalog
 // @Produce  json
 // @Param    sourceId path  string true  "Source ID"
-// @Param    genres   query string false "Comma-separated genre slugs/names to match"
+// @Param    subTypes query string false "Comma-separated sub-type slugs to match"
 // @Param    exclude  query string false "Comma-separated media ids to omit (already-read / seed)"
 // @Param    page     query int    false "Page (1-based)"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/recommendations [get]
 func (h *MediaHandler) Recommendations(ctx context.Context, c *app.RequestContext) {
-	res, err := h.svc.Recommendations(ctx, c.Param("sourceId"), queryAll(c, "genres"), queryAll(c, "exclude"), queryInt(c, "page", 1))
+	res, err := h.svc.Recommendations(ctx, c.Param("sourceId"), queryAll(c, "subTypes"), queryAll(c, "exclude"), queryInt(c, "page", 1))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -123,15 +111,15 @@ func (h *MediaHandler) Recommendations(ctx context.Context, c *app.RequestContex
 	writeOK(c, consts.StatusOK, res)
 }
 
-// Genres godoc
-// @Summary  Filterable genres for a source
+// SubTypes godoc
+// @Summary  Filterable sub-types present in a source
 // @Tags     catalog
 // @Produce  json
 // @Param    sourceId path string true "Source ID"
-// @Success  200 {array} domain.Taxonomy
-// @Router   /v1/sources/{sourceId}/genres [get]
-func (h *MediaHandler) Genres(ctx context.Context, c *app.RequestContext) {
-	res, err := h.svc.Genres(ctx, c.Param("sourceId"))
+// @Success  200 {array} domain.SubType
+// @Router   /v1/sources/{sourceId}/subtypes [get]
+func (h *MediaHandler) SubTypes(ctx context.Context, c *app.RequestContext) {
+	res, err := h.svc.SubTypes(ctx, c.Param("sourceId"))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -139,15 +127,15 @@ func (h *MediaHandler) Genres(ctx context.Context, c *app.RequestContext) {
 	writeOK(c, consts.StatusOK, res)
 }
 
-// Categories godoc
-// @Summary  Filterable categories for a source
+// SubTypeCatalog godoc
+// @Summary  Sub-type vocabulary grouped by media type
+// @Description Returns the managed set of sub-types allowed per media type (manga|novel|video) — the source of truth for populating a sub-type selector. Backed by the `sub_type` table.
 // @Tags     catalog
 // @Produce  json
-// @Param    sourceId path string true "Source ID"
-// @Success  200 {array} domain.Taxonomy
-// @Router   /v1/sources/{sourceId}/categories [get]
-func (h *MediaHandler) Categories(ctx context.Context, c *app.RequestContext) {
-	res, err := h.svc.Categories(ctx, c.Param("sourceId"))
+// @Success  200 {object} map[string][]domain.SubType
+// @Router   /v1/subtypes [get]
+func (h *MediaHandler) SubTypeCatalog(ctx context.Context, c *app.RequestContext) {
+	res, err := h.svc.SubTypeCatalog(ctx)
 	if err != nil {
 		writeError(c, err)
 		return

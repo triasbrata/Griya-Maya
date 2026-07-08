@@ -20,14 +20,11 @@ func TestGenreSlug(t *testing.T) {
 	}
 }
 
-func TestFilterClausesTypesGenresCategories(t *testing.T) {
+func TestFilterClausesTypesSubTypes(t *testing.T) {
 	qb := newQueryBuilder()
 	f := domain.CatalogFilter{
-		Types:             []string{"video", ""}, // empty dropped
-		IncludeGenres:     []string{"Action", "martial-arts"},
-		ExcludeGenres:     []string{"Ecchi"},
-		IncludeCategories: []string{"Webtoon"},
-		GenreMode:         domain.GenreModeAnd,
+		Types:    []string{"manga", ""},        // empty dropped
+		SubTypes: []string{"manhwa", "manhua"}, // first-class column filter
 	}
 	clause := filterClauses(qb, f)
 
@@ -35,32 +32,24 @@ func TestFilterClausesTypesGenresCategories(t *testing.T) {
 	if !strings.Contains(clause, "media.type IN (") {
 		t.Errorf("expected media.type IN clause, got %q", clause)
 	}
-	// AND mode uses a COUNT(DISTINCT ...) = N check for included genres.
-	if !strings.Contains(clause, "COUNT(DISTINCT t.slug)") {
-		t.Errorf("expected COUNT(DISTINCT) for AND mode, got %q", clause)
+	// Sub-type is likewise a first-class column filter (no join).
+	if !strings.Contains(clause, "media.sub_type IN (") {
+		t.Errorf("expected media.sub_type IN clause, got %q", clause)
 	}
-	// Category include joins the category taxonomy.
-	if !strings.Contains(clause, "media_category") {
-		t.Errorf("expected media_category join, got %q", clause)
+	// Category filtering was removed entirely — no taxonomy joins here.
+	if strings.Contains(clause, "media_category") || strings.Contains(clause, "EXISTS") {
+		t.Errorf("category filtering must be gone, got %q", clause)
 	}
-	// Exclusion emits NOT EXISTS.
-	if !strings.Contains(clause, "NOT EXISTS") {
-		t.Errorf("expected NOT EXISTS for excluded genre, got %q", clause)
+	// Params: type(1) + sub_type[manhwa, manhua](2) = 3.
+	if len(qb.params) != 3 {
+		t.Fatalf("expected 3 bound params, got %d (%v)", len(qb.params), qb.params)
 	}
-	// Params: type(1) + genre-include AND [action, martial-arts, count] (3)
-	// + genre-exclude [ecchi] (1) + category-include AND [webtoon, count] (2) = 7.
-	if len(qb.params) != 7 {
-		t.Fatalf("expected 7 bound params, got %d (%v)", len(qb.params), qb.params)
-	}
-	if qb.params[0] != "video" {
+	if qb.params[0] != "manga" {
 		t.Errorf("first param should be the type, got %v", qb.params[0])
 	}
-	// Genre values are bound as normalized slugs.
-	assertContains(t, qb.params, "action")
-	assertContains(t, qb.params, "martial-arts")
-	assertContains(t, qb.params, "ecchi")
-	assertContains(t, qb.params, "webtoon")
-	assertContains(t, qb.params, 2) // AND-mode count
+	// Sub-types are bound verbatim (already canonical slugs).
+	assertContains(t, qb.params, "manhwa")
+	assertContains(t, qb.params, "manhua")
 }
 
 func assertContains(t *testing.T, params []any, want any) {
@@ -80,20 +69,6 @@ func TestFilterClausesEmpty(t *testing.T) {
 	}
 	if len(qb.params) != 0 {
 		t.Errorf("empty filter should bind nothing, got %d", len(qb.params))
-	}
-}
-
-func TestFilterClausesOrModeUsesExists(t *testing.T) {
-	qb := newQueryBuilder()
-	clause := filterClauses(qb, domain.CatalogFilter{
-		IncludeGenres: []string{"action"},
-		GenreMode:     domain.GenreModeOr,
-	})
-	if !strings.Contains(clause, "EXISTS (SELECT 1 FROM media_genre") {
-		t.Errorf("OR mode should use EXISTS, got %q", clause)
-	}
-	if strings.Contains(clause, "COUNT(DISTINCT") {
-		t.Errorf("OR mode should not use COUNT, got %q", clause)
 	}
 }
 
@@ -129,12 +104,20 @@ func TestBindIsPositional(t *testing.T) {
 
 func TestTaxTableFor(t *testing.T) {
 	for _, kind := range []domain.TaxonomyKind{
-		domain.TaxonomyGenre, domain.TaxonomyCategory, domain.TaxonomyAuthor, domain.TaxonomyArtist,
+		domain.TaxonomyGenre, domain.TaxonomyAuthor, domain.TaxonomyArtist,
 	} {
 		tt, ok := taxTableFor(kind)
 		if !ok || tt.table == "" || tt.join == "" || tt.fk == "" {
 			t.Errorf("taxTableFor(%q) = %+v, ok=%v", kind, tt, ok)
 		}
+	}
+	// genre is re-introduced; it must resolve to the genre table.
+	if tt, ok := taxTableFor(domain.TaxonomyGenre); !ok || tt.table != "genre" || tt.join != "media_genre" {
+		t.Errorf("genre kind should resolve to genre table, got %+v ok=%v", tt, ok)
+	}
+	// category was retired; it must no longer resolve.
+	if tt, ok := taxTableFor(domain.TaxonomyKind("category")); ok {
+		t.Errorf("retired category kind should not resolve, got %+v", tt)
 	}
 	if tt, ok := taxTableFor(domain.TaxonomyKind("bogus")); ok {
 		t.Errorf("unknown kind should not resolve, got %+v", tt)

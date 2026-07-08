@@ -24,18 +24,18 @@ func NewMediaRepo(db *Client) *MediaRepo {
 
 // concatSep is the group_concat delimiter used to pack a media's taxonomy names
 // into a single flat column. It is the ASCII unit separator (0x1F), which never
-// appears in a genre/author/artist name, so names carrying commas survive the
+// appears in a category/author/artist name, so names carrying commas survive the
 // round-trip. Reassembled by splitConcat.
 const concatSep = "\x1f"
 
 // mediaColumns selects the media row plus its normalized taxonomies. The
 // taxonomies are reassembled per-row via correlated group_concat subqueries (not
 // JOINs) so the flat D1 REST result set keeps exactly one row per media and
-// LIMIT/OFFSET pagination stays correct.
-const mediaColumns = `media.id, media.source_id, media.type, media.url, media.title,
+// LIMIT/OFFSET pagination stays correct. sub_type is a first-class column on
+// media (a single type-scoped classifier), not a normalized taxonomy.
+const mediaColumns = `media.id, media.source_id, media.type, media.sub_type, media.url, media.title,
         media.cover_url, media.description, media.status, media.updated_at,
-        (SELECT group_concat(g.name, char(31))  FROM media_genre mg    JOIN genre g     ON g.id  = mg.genre_id    WHERE mg.media_id = media.id) AS genres,
-        (SELECT group_concat(c.name, char(31))  FROM media_category mc  JOIN category c  ON c.id  = mc.category_id WHERE mc.media_id = media.id) AS categories,
+        (SELECT group_concat(g.name, char(31))  FROM media_genre mg     JOIN genre g     ON g.id  = mg.genre_id    WHERE mg.media_id = media.id) AS genres,
         (SELECT group_concat(a.name, char(31))  FROM media_author ma    JOIN author a    ON a.id  = ma.author_id   WHERE ma.media_id = media.id) AS authors,
         (SELECT group_concat(ar.name, char(31)) FROM media_artist mr    JOIN artist ar   ON ar.id = mr.artist_id   WHERE mr.media_id = media.id) AS artists`
 
@@ -85,29 +85,28 @@ func (r *MediaRepo) Search(ctx context.Context, sourceID, query string, page, pe
 	return toMediaPage(rows, page, perPage), nil
 }
 
-// Recommend ranks a source's media by how many of the requested genre slugs each
-// entry shares (descending), breaking ties by the catalog's default popular
-// ordering (popularity, then title). Media that share no requested genre, and any
-// id in exclude, are omitted. genres must be non-empty — the service falls back to
-// the popular feed otherwise, so an empty genre set never reaches here.
-//
-// The ranking runs entirely in SQL over the same normalized genre join tables the
-// genre filter uses (media_genre → genre), reusing the OR-mode EXISTS clause for
-// the "at least one shared genre" gate.
-func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, genres, exclude []string, page, perPage int) (domain.MediaPage, error) {
+// Recommend ranks a source's media by shared sub-type with the requested set:
+// entries whose sub_type is one of subTypes rank first, ties broken by the
+// catalog's default popular ordering (popularity, then title). Any id in exclude
+// is omitted. subTypes must be non-empty — the service falls back to the popular
+// feed otherwise, so an empty set never reaches here. Unlike the former
+// genre-overlap ranking, sub_type is single-valued, so the "overlap" gate is a
+// direct membership test on the media column.
+func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, subTypes, exclude []string, page, perPage int) (domain.MediaPage, error) {
 	page, perPage = normPage(page, perPage)
 
-	genres = nonEmpty(genres)
-	genreTT, _ := taxTableFor(domain.TaxonomyGenre)
+	subTypes = nonEmpty(subTypes)
 
 	qb := newQueryBuilder()
 
-	// overlap = how many requested genre slugs this media carries; drives ranking.
-	overlap := overlapCount(qb, genreTT, genres)
+	ph := make([]string, len(subTypes))
+	for i, st := range subTypes {
+		ph[i] = qb.bind(st)
+	}
+	in := strings.Join(ph, ", ")
 
-	where := "media.source_id = " + qb.bind(sourceID)
-	// Only rank media sharing at least one requested genre (zero-overlap dropped).
-	where += includeClause(qb, genreTT, genres, domain.GenreModeOr)
+	where := "media.source_id = " + qb.bind(sourceID) +
+		" AND media.sub_type IN (" + in + ")"
 	// Drop already-read / seed ids.
 	if exc := nonEmpty(exclude); len(exc) > 0 {
 		ph := make([]string, len(exc))
@@ -117,8 +116,8 @@ func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, genres, excl
 		where += " AND media.id NOT IN (" + strings.Join(ph, ", ") + ")"
 	}
 
-	sql := "SELECT " + mediaColumns + ", " + overlap + " AS overlap FROM media WHERE " + where +
-		" ORDER BY overlap DESC, popularity DESC, title ASC" +
+	sql := "SELECT " + mediaColumns + " FROM media WHERE " + where +
+		" ORDER BY popularity DESC, title ASC" +
 		" LIMIT " + qb.bind(perPage+1) + " OFFSET " + qb.bind((page-1)*perPage)
 
 	rows, err := r.db.Query(ctx, sql, qb.params...)
@@ -128,47 +127,78 @@ func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, genres, excl
 	return toMediaPage(rows, page, perPage), nil
 }
 
-// overlapCount renders a correlated subquery counting how many of slugs a media
-// carries in the genre taxonomy. Slugs are normalized with genreSlug so they line
-// up with the stored slugs, exactly like includeClause/excludeClause.
-func overlapCount(qb *queryBuilder, tt taxTable, slugs []string) string {
-	ph := make([]string, len(slugs))
-	for i, s := range slugs {
-		ph[i] = qb.bind(genreSlug(s))
-	}
-	return "(SELECT COUNT(DISTINCT t.slug) FROM " + tt.join + " j JOIN " + tt.table +
-		" t ON t.id = j." + tt.fk + " WHERE j.media_id = media.id AND t.slug IN (" + strings.Join(ph, ", ") + "))"
-}
-
-// Genres returns the distinct genres attached to a source's catalog, as
-// filterable tags (slug + name), sorted alphabetically.
-func (r *MediaRepo) Genres(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	return r.sourceTaxonomy(ctx, domain.TaxonomyGenre, sourceID)
-}
-
-// Categories returns the distinct categories attached to a source's catalog.
-func (r *MediaRepo) Categories(ctx context.Context, sourceID string) ([]domain.Taxonomy, error) {
-	return r.sourceTaxonomy(ctx, domain.TaxonomyCategory, sourceID)
-}
-
-// sourceTaxonomy lists the distinct tags of a kind linked to any media of a
-// source. SQL does the dedup + sort.
-func (r *MediaRepo) sourceTaxonomy(ctx context.Context, kind domain.TaxonomyKind, sourceID string) ([]domain.Taxonomy, error) {
-	tt, _ := taxTableFor(kind)
-	sel := "t.id AS id, t.name AS name"
-	if tt.hasSlug {
-		sel = "t.id AS id, t.slug AS slug, t.name AS name"
-	}
-	sql := "SELECT DISTINCT " + sel +
-		" FROM " + tt.table + " t" +
-		" JOIN " + tt.join + " j ON j." + tt.fk + " = t.id" +
-		" JOIN media m ON m.id = j.media_id" +
-		" WHERE m.source_id = ?1 ORDER BY t.name ASC"
-	rows, err := r.db.Query(ctx, sql, sourceID)
+// SubTypes returns the distinct sub-types present in a source's catalog, as
+// filterable tags (slug + display name), sorted by slug. Only sub-types actually
+// used by the source's media are returned (unlike the full managed vocabulary
+// served by GET /v1/subtypes). The display name is resolved from the managed
+// sub_type table, falling back to the raw slug when the row has none.
+func (r *MediaRepo) SubTypes(ctx context.Context, sourceID string) ([]domain.SubType, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT DISTINCT m.sub_type AS slug, COALESCE(st.name, m.sub_type) AS name
+		 FROM media m LEFT JOIN sub_type st ON st.slug = m.sub_type
+		 WHERE m.source_id = ?1 AND m.sub_type != '' ORDER BY m.sub_type ASC`, sourceID)
 	if err != nil {
 		return nil, err
 	}
-	return taxonomyRows(kind, rows), nil
+	out := make([]domain.SubType, 0, len(rows))
+	for _, row := range rows {
+		slug := strVal(row["slug"])
+		if slug == "" {
+			continue
+		}
+		out = append(out, domain.SubType{Slug: slug, Name: strVal(row["name"])})
+	}
+	return out, nil
+}
+
+// --- managed sub-type vocabulary (per-type `sub_type` table) ---
+
+// SubTypeVocab returns the full managed sub-type vocabulary grouped by media
+// type — the source of truth for validation and the discovery endpoint.
+func (r *MediaRepo) SubTypeVocab(ctx context.Context) (map[domain.MediaType][]domain.SubType, error) {
+	rows, err := r.db.Query(ctx, `SELECT slug, type, name FROM sub_type ORDER BY type ASC, slug ASC`)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[domain.MediaType][]domain.SubType)
+	for _, row := range rows {
+		t := domain.MediaType(strVal(row["type"]))
+		out[t] = append(out[t], domain.SubType{Slug: strVal(row["slug"]), Name: strVal(row["name"])})
+	}
+	return out, nil
+}
+
+// ValidSubType reports whether slug is an allowed sub-type for media type t. An
+// empty slug is valid (sub-type is optional).
+func (r *MediaRepo) ValidSubType(ctx context.Context, t domain.MediaType, slug string) (bool, error) {
+	if slug == "" {
+		return true, nil
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT slug FROM sub_type WHERE slug = ?1 AND type = ?2 LIMIT 1`, slug, string(t))
+	if err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
+}
+
+// CreateSubType inserts a managed sub-type row (slug is the primary key).
+func (r *MediaRepo) CreateSubType(ctx context.Context, st domain.SubType) error {
+	return r.db.Exec(ctx,
+		`INSERT INTO sub_type (slug, type, name) VALUES (?1,?2,?3)`,
+		st.Slug, string(st.Type), st.Name)
+}
+
+// UpdateSubType rewrites a sub-type's type + name (slug is immutable).
+func (r *MediaRepo) UpdateSubType(ctx context.Context, slug string, st domain.SubType) error {
+	return r.db.Exec(ctx,
+		`UPDATE sub_type SET type=?2, name=?3 WHERE slug=?1`,
+		slug, string(st.Type), st.Name)
+}
+
+// DeleteSubType removes a managed sub-type by slug.
+func (r *MediaRepo) DeleteSubType(ctx context.Context, slug string) error {
+	return r.db.Exec(ctx, `DELETE FROM sub_type WHERE slug=?1`, slug)
 }
 
 // --- filter → SQL helpers ---
@@ -187,7 +217,8 @@ func (qb *queryBuilder) bind(v any) string {
 	return "?" + strconv.Itoa(len(qb.params))
 }
 
-// filterClauses appends type/genre/category constraints to a WHERE clause.
+// filterClauses appends type/sub_type constraints to a WHERE clause. Both are
+// first-class media columns (no taxonomy joins); category filtering was removed.
 func filterClauses(qb *queryBuilder, f domain.CatalogFilter) string {
 	var b strings.Builder
 
@@ -200,51 +231,16 @@ func filterClauses(qb *queryBuilder, f domain.CatalogFilter) string {
 		b.WriteString(" AND media.type IN (" + strings.Join(ph, ", ") + ")")
 	}
 
-	genreTT, _ := taxTableFor(domain.TaxonomyGenre)
-	categoryTT, _ := taxTableFor(domain.TaxonomyCategory)
-
-	if inc := nonEmpty(f.IncludeGenres); len(inc) > 0 {
-		b.WriteString(includeClause(qb, genreTT, inc, f.GenreMode))
-	}
-	if exc := nonEmpty(f.ExcludeGenres); len(exc) > 0 {
-		b.WriteString(excludeClause(qb, genreTT, exc))
-	}
-	if inc := nonEmpty(f.IncludeCategories); len(inc) > 0 {
-		b.WriteString(includeClause(qb, categoryTT, inc, f.GenreMode))
-	}
-	if exc := nonEmpty(f.ExcludeCategories); len(exc) > 0 {
-		b.WriteString(excludeClause(qb, categoryTT, exc))
+	// SUB_TYPE is likewise a first-class column: media.sub_type IN (...).
+	if subs := nonEmpty(f.SubTypes); len(subs) > 0 {
+		ph := make([]string, len(subs))
+		for i, s := range subs {
+			ph[i] = qb.bind(s)
+		}
+		b.WriteString(" AND media.sub_type IN (" + strings.Join(ph, ", ") + ")")
 	}
 
 	return b.String()
-}
-
-// includeClause requires membership in a taxonomy by slug. OR mode: the media
-// carries ANY of the slugs (EXISTS). AND mode: it carries ALL of them
-// (COUNT(DISTINCT matched) == requested count).
-func includeClause(qb *queryBuilder, tt taxTable, slugs []string, mode domain.GenreMode) string {
-	ph := make([]string, len(slugs))
-	for i, s := range slugs {
-		ph[i] = qb.bind(genreSlug(s))
-	}
-	in := strings.Join(ph, ", ")
-	if mode == domain.GenreModeAnd {
-		return " AND (SELECT COUNT(DISTINCT t.slug) FROM " + tt.join + " j JOIN " + tt.table +
-			" t ON t.id = j." + tt.fk + " WHERE j.media_id = media.id AND t.slug IN (" + in + ")) = " +
-			qb.bind(len(slugs))
-	}
-	return " AND EXISTS (SELECT 1 FROM " + tt.join + " j JOIN " + tt.table +
-		" t ON t.id = j." + tt.fk + " WHERE j.media_id = media.id AND t.slug IN (" + in + "))"
-}
-
-// excludeClause forbids membership in ANY of the given slugs.
-func excludeClause(qb *queryBuilder, tt taxTable, slugs []string) string {
-	ph := make([]string, len(slugs))
-	for i, s := range slugs {
-		ph[i] = qb.bind(genreSlug(s))
-	}
-	return " AND NOT EXISTS (SELECT 1 FROM " + tt.join + " j JOIN " + tt.table +
-		" t ON t.id = j." + tt.fk + " WHERE j.media_id = media.id AND t.slug IN (" + strings.Join(ph, ", ") + "))"
 }
 
 // orderByClause renders a safe ORDER BY (column names are from a fixed allowlist,
@@ -360,10 +356,10 @@ func (r *MediaRepo) CreateMedia(ctx context.Context, m domain.Media) error {
 		updated = time.Now()
 	}
 	if err := r.db.Exec(ctx,
-		`INSERT INTO media (id, source_id, type, url, title, cover_url, description,
+		`INSERT INTO media (id, source_id, type, sub_type, url, title, cover_url, description,
 		    status, popularity, updated_at)
-		 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,0,?9)`,
-		m.ID, m.SourceID, string(mtype), m.URL, m.Title, m.CoverURL, m.Description,
+		 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,?10)`,
+		m.ID, m.SourceID, string(mtype), m.SubType, m.URL, m.Title, m.CoverURL, m.Description,
 		string(m.Status), updated.Unix(),
 	); err != nil {
 		return err
@@ -374,9 +370,9 @@ func (r *MediaRepo) CreateMedia(ctx context.Context, m domain.Media) error {
 // UpdateMedia rewrites a media row and re-links its taxonomies.
 func (r *MediaRepo) UpdateMedia(ctx context.Context, m domain.Media) error {
 	if err := r.db.Exec(ctx,
-		`UPDATE media SET type=?2, url=?3, title=?4, cover_url=?5, description=?6,
-		    status=?7, updated_at=?8 WHERE id=?1`,
-		m.ID, string(m.Type), m.URL, m.Title, m.CoverURL, m.Description,
+		`UPDATE media SET type=?2, sub_type=?3, url=?4, title=?5, cover_url=?6, description=?7,
+		    status=?8, updated_at=?9 WHERE id=?1`,
+		m.ID, string(m.Type), m.SubType, m.URL, m.Title, m.CoverURL, m.Description,
 		string(m.Status), time.Now().Unix(),
 	); err != nil {
 		return err
@@ -403,7 +399,6 @@ func (r *MediaRepo) DeleteMedia(ctx context.Context, id string) error {
 		{`DELETE FROM page WHERE chapter_id IN (SELECT id FROM chapter WHERE media_id=?1)`, []any{id}},
 		{`DELETE FROM chapter WHERE media_id=?1`, []any{id}},
 		{`DELETE FROM media_genre WHERE media_id=?1`, []any{id}},
-		{`DELETE FROM media_category WHERE media_id=?1`, []any{id}},
 		{`DELETE FROM media_author WHERE media_id=?1`, []any{id}},
 		{`DELETE FROM media_artist WHERE media_id=?1`, []any{id}},
 		{`DELETE FROM media WHERE id=?1`, []any{id}},
@@ -416,13 +411,10 @@ func (r *MediaRepo) DeleteMedia(ctx context.Context, id string) error {
 	return nil
 }
 
-// syncAllTaxonomies re-links a media's genres/categories/authors/artists from
-// the display-name arrays on m (upserting tags as needed).
+// syncAllTaxonomies re-links a media's genres/authors/artists from the
+// display-name arrays on m (upserting tags as needed).
 func (r *MediaRepo) syncAllTaxonomies(ctx context.Context, m domain.Media) error {
 	if err := r.syncTaxonomy(ctx, m.ID, domain.TaxonomyGenre, m.Genres); err != nil {
-		return err
-	}
-	if err := r.syncTaxonomy(ctx, m.ID, domain.TaxonomyCategory, m.Categories); err != nil {
 		return err
 	}
 	if err := r.syncTaxonomy(ctx, m.ID, domain.TaxonomyAuthor, m.Authors); err != nil {
@@ -614,8 +606,6 @@ func taxTableFor(kind domain.TaxonomyKind) (taxTable, bool) {
 	switch kind {
 	case domain.TaxonomyGenre:
 		return taxTable{"genre", "media_genre", "genre_id", true}, true
-	case domain.TaxonomyCategory:
-		return taxTable{"category", "media_category", "category_id", true}, true
 	case domain.TaxonomyAuthor:
 		return taxTable{"author", "media_author", "author_id", false}, true
 	case domain.TaxonomyArtist:
@@ -677,13 +667,13 @@ func mediaFromRow(row map[string]any) domain.Media {
 		ID:          strVal(row["id"]),
 		SourceID:    strVal(row["source_id"]),
 		Type:        mtype,
+		SubType:     strVal(row["sub_type"]),
 		URL:         strVal(row["url"]),
 		Title:       strVal(row["title"]),
 		CoverURL:    strVal(row["cover_url"]),
 		Description: strVal(row["description"]),
 		Status:      domain.MediaStatus(strVal(row["status"])),
 		Genres:      splitConcat(strVal(row["genres"])),
-		Categories:  splitConcat(strVal(row["categories"])),
 		Authors:     splitConcat(strVal(row["authors"])),
 		Artists:     splitConcat(strVal(row["artists"])),
 	}

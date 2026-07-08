@@ -23,13 +23,15 @@ func anyN(n int) []any {
 	return a
 }
 
-// mediaRow builds a flat media result row with the group_concat taxonomy columns
-// packed using the concatSep (0x1F) delimiter the repo reassembles.
-func mediaRow(id, genres string) map[string]any {
+// mediaRow builds a flat media result row. sub_type is a first-class column;
+// the remaining taxonomy columns are packed with the concatSep (0x1F) delimiter
+// the repo reassembles.
+func mediaRow(id, subType string) map[string]any {
 	return map[string]any{
-		"id": id, "source_id": "src", "type": "manga", "url": "u/" + id, "title": "T-" + id,
+		"id": id, "source_id": "src", "type": "manga", "sub_type": subType,
+		"url": "u/" + id, "title": "T-" + id,
 		"cover_url": "", "description": "", "status": "ongoing", "updated_at": float64(0),
-		"genres": genres, "categories": "", "authors": "", "artists": "",
+		"genres": "", "authors": "", "artists": "",
 	}
 }
 
@@ -41,7 +43,7 @@ func TestMediaRepo_List_MapsRowsAndPaginates(t *testing.T) {
 	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(3)...).RunAndReturn(
 		func(_ context.Context, sql string, _ ...any) ([]map[string]any, error) {
 			gotSQL = sql
-			return []map[string]any{mediaRow("m1", "Action"), mediaRow("m2", "Comedy")}, nil
+			return []map[string]any{mediaRow("m1", "manhwa"), mediaRow("m2", "manhua")}, nil
 		})
 
 	got, err := repo.List(context.Background(), "src", "popular", 1, 1, domain.CatalogFilter{})
@@ -50,7 +52,7 @@ func TestMediaRepo_List_MapsRowsAndPaginates(t *testing.T) {
 	require.Len(t, got.Items, 1) // trimmed to perPage
 	assert.Equal(t, "m1", got.Items[0].ID)
 	assert.Equal(t, domain.MediaManga, got.Items[0].Type)
-	assert.Equal(t, []string{"Action"}, got.Items[0].Genres)
+	assert.Equal(t, "manhwa", got.Items[0].SubType)
 	assert.Contains(t, gotSQL, "FROM media")
 	assert.Contains(t, gotSQL, "ORDER BY popularity DESC")
 }
@@ -66,37 +68,36 @@ func TestMediaRepo_List_PropagatesError(t *testing.T) {
 	assert.ErrorIs(t, err, wantErr)
 }
 
-func TestMediaRepo_Recommend_RanksByOverlap(t *testing.T) {
+func TestMediaRepo_Recommend_RanksBySubType(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}
 
 	var gotSQL string
 	var params []any
-	// genres(2 overlap) + source(1) + include-genres(2) + exclude(1) + limit + offset = 8.
-	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(8)...).RunAndReturn(
+	// source(1) + sub_type IN[manhwa, manhua](2) + exclude(1) + limit + offset = 6.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(6)...).RunAndReturn(
 		func(_ context.Context, sql string, p ...any) ([]map[string]any, error) {
 			gotSQL, params = sql, p
-			return []map[string]any{mediaRow("m1", "Action"), mediaRow("m2", "Comedy")}, nil
+			return []map[string]any{mediaRow("m1", "manhwa"), mediaRow("m2", "manhua")}, nil
 		})
 
 	got, err := repo.Recommend(context.Background(), "src",
-		[]string{"Action", "Sci Fi"}, []string{"seed1"}, 1, 1)
+		[]string{"manhwa", "manhua"}, []string{"seed1"}, 1, 1)
 	require.NoError(t, err)
 	assert.True(t, got.HasNext)
 	require.Len(t, got.Items, 1) // trimmed to perPage
 	assert.Equal(t, "m1", got.Items[0].ID)
 
-	// Ranking is overlap-count first, then the popular tie-break.
-	assert.Contains(t, gotSQL, "COUNT(DISTINCT t.slug)")
-	assert.Contains(t, gotSQL, "AS overlap")
-	assert.Contains(t, gotSQL, "ORDER BY overlap DESC, popularity DESC, title ASC")
-	// Zero-overlap gate reuses the OR-mode EXISTS clause on the genre join tables.
-	assert.Contains(t, gotSQL, "EXISTS (SELECT 1 FROM media_genre")
+	// Sub-type membership gate on the first-class column (no join/overlap count).
+	assert.Contains(t, gotSQL, "media.sub_type IN (")
+	assert.NotContains(t, gotSQL, "COUNT(DISTINCT")
+	// Tie-break is the popular order.
+	assert.Contains(t, gotSQL, "ORDER BY popularity DESC, title ASC")
 	// Excluded ids are dropped.
 	assert.Contains(t, gotSQL, "media.id NOT IN (")
-	// Genre names are bound as normalized slugs; the seed id is bound verbatim.
-	assertContains(t, params, "action")
-	assertContains(t, params, "sci-fi")
+	// Sub-types are bound verbatim (canonical slugs); the seed id is bound verbatim.
+	assertContains(t, params, "manhwa")
+	assertContains(t, params, "manhua")
 	assertContains(t, params, "src")
 	assertContains(t, params, "seed1")
 }
@@ -106,14 +107,14 @@ func TestMediaRepo_Recommend_NoExclude(t *testing.T) {
 	repo := &MediaRepo{db: q}
 
 	var gotSQL string
-	// genre(1 overlap) + source(1) + include-genre(1) + limit + offset = 5, no exclude.
-	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(5)...).RunAndReturn(
+	// source(1) + sub_type(1) + limit + offset = 4, no exclude.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(4)...).RunAndReturn(
 		func(_ context.Context, sql string, _ ...any) ([]map[string]any, error) {
 			gotSQL = sql
-			return []map[string]any{mediaRow("m1", "Action")}, nil
+			return []map[string]any{mediaRow("m1", "manhwa")}, nil
 		})
 
-	got, err := repo.Recommend(context.Background(), "src", []string{"Action"}, nil, 1, 30)
+	got, err := repo.Recommend(context.Background(), "src", []string{"manhwa"}, nil, 1, 30)
 	require.NoError(t, err)
 	require.Len(t, got.Items, 1)
 	assert.NotContains(t, gotSQL, "NOT IN")
@@ -124,9 +125,9 @@ func TestMediaRepo_Recommend_PropagatesError(t *testing.T) {
 	repo := &MediaRepo{db: q}
 	wantErr := errors.New("d1 boom")
 
-	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(5)...).Return(nil, wantErr)
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(4)...).Return(nil, wantErr)
 
-	_, err := repo.Recommend(context.Background(), "src", []string{"Action"}, nil, 1, 30)
+	_, err := repo.Recommend(context.Background(), "src", []string{"manhwa"}, nil, 1, 30)
 	assert.ErrorIs(t, err, wantErr)
 }
 
@@ -153,12 +154,12 @@ func TestMediaRepo_Get_FoundAndNotFound(t *testing.T) {
 
 	q.EXPECT().Query(mock.Anything, mock.MatchedBy(func(s string) bool {
 		return strings.Contains(s, "WHERE id = ?1")
-	}), "m1").Return([]map[string]any{mediaRow("m1", "Action"+concatSep+"Drama")}, nil).Once()
+	}), "m1").Return([]map[string]any{mediaRow("m1", "manhwa")}, nil).Once()
 
 	got, err := repo.Get(context.Background(), "m1")
 	require.NoError(t, err)
 	assert.Equal(t, "m1", got.ID)
-	assert.Equal(t, []string{"Action", "Drama"}, got.Genres)
+	assert.Equal(t, "manhwa", got.SubType)
 
 	q.EXPECT().Query(mock.Anything, mock.Anything, "missing").Return(nil, nil).Once()
 	_, err = repo.Get(context.Background(), "missing")
@@ -197,48 +198,94 @@ func TestMediaRepo_Pages(t *testing.T) {
 	assert.Equal(t, domain.PageKindImage, got[0].Kind)
 }
 
-func TestMediaRepo_Genres_FromNormalizedTables(t *testing.T) {
+func TestMediaRepo_SubTypes_FromMediaColumn(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}
 
-	// The normalized query already dedups + sorts; the repo just maps rows.
+	// Distinct sub-types come off the media column, LEFT JOIN sub_type for the
+	// display name, sorted.
 	q.EXPECT().Query(mock.Anything, mock.MatchedBy(func(s string) bool {
-		return strings.Contains(s, "FROM genre t") && strings.Contains(s, "media_genre")
+		return strings.Contains(s, "FROM media m LEFT JOIN sub_type st") &&
+			strings.Contains(s, "m.sub_type != ''")
 	}), "src").Return([]map[string]any{
-		{"id": "g1", "slug": "action", "name": "Action"},
-		{"id": "g2", "slug": "comedy", "name": "Comedy"},
+		{"slug": "manhua", "name": "Manhua"},
+		{"slug": "manhwa", "name": "Manhwa"},
+		{"slug": "", "name": ""}, // defensively skipped
 	}, nil)
 
-	got, err := repo.Genres(context.Background(), "src")
+	got, err := repo.SubTypes(context.Background(), "src")
 	require.NoError(t, err)
 	require.Len(t, got, 2)
-	assert.Equal(t, "action", got[0].Slug)
-	assert.Equal(t, "Comedy", got[1].Name)
+	assert.Equal(t, "manhua", got[0].Slug)
+	assert.Equal(t, "Manhua", got[0].Name) // display name resolved from the sub_type table
+	assert.Equal(t, "manhwa", got[1].Slug)
 }
 
-func TestMediaRepo_Categories_FromNormalizedTables(t *testing.T) {
+func TestMediaRepo_SubTypeVocab(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}
 
-	q.EXPECT().Query(mock.Anything, mock.MatchedBy(func(s string) bool {
-		return strings.Contains(s, "FROM category t")
-	}), "src").Return([]map[string]any{{"id": "c1", "slug": "webtoon", "name": "Webtoon"}}, nil)
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT slug, type, name FROM sub_type")).
+		Return([]map[string]any{
+			{"slug": "manga", "type": "manga", "name": "Manga"},
+			{"slug": "manhwa", "type": "manga", "name": "Manhwa"},
+			{"slug": "web_novel", "type": "novel", "name": "Web Novel"},
+		}, nil)
 
-	got, err := repo.Categories(context.Background(), "src")
+	got, err := repo.SubTypeVocab(context.Background())
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "webtoon", got[0].Slug)
+	require.Len(t, got[domain.MediaManga], 2)
+	require.Len(t, got[domain.MediaNovel], 1)
+	assert.Equal(t, "manga", got[domain.MediaManga][0].Slug)
+}
+
+func TestMediaRepo_ValidSubType(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	// Empty slug never hits the DB.
+	ok, err := repo.ValidSubType(context.Background(), domain.MediaManga, "")
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT slug FROM sub_type"), "manhwa", "manga").
+		Return([]map[string]any{{"slug": "manhwa"}}, nil).Once()
+	ok, err = repo.ValidSubType(context.Background(), domain.MediaManga, "manhwa")
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	q.EXPECT().Query(mock.Anything, sqlHasPrefix("SELECT slug FROM sub_type"), "web_novel", "manga").
+		Return(nil, nil).Once()
+	ok, err = repo.ValidSubType(context.Background(), domain.MediaManga, "web_novel")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestMediaRepo_SubTypeCRUD(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT INTO sub_type"), "webtoon", "manga", "Webtoon").Return(nil).Once()
+	require.NoError(t, repo.CreateSubType(context.Background(),
+		domain.SubType{Slug: "webtoon", Type: domain.MediaManga, Name: "Webtoon"}))
+
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("UPDATE sub_type SET"), "webtoon", "manga", "Web Toon").Return(nil).Once()
+	require.NoError(t, repo.UpdateSubType(context.Background(), "webtoon",
+		domain.SubType{Slug: "webtoon", Type: domain.MediaManga, Name: "Web Toon"}))
+
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("DELETE FROM sub_type"), "webtoon").Return(nil).Once()
+	require.NoError(t, repo.DeleteSubType(context.Background(), "webtoon"))
 }
 
 func TestMediaRepo_CreateMedia_InsertsAndSyncs(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}
 
-	// INSERT the media row.
-	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT INTO media"), anyN(9)...).Return(nil).Once()
-	// Each taxonomy sync starts by clearing the join rows.
+	// INSERT the media row (id, source_id, type, sub_type, url, title, cover_url,
+	// description, status, updated_at = 10 bound params).
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT INTO media"), anyN(10)...).Return(nil).Once()
+	// Each taxonomy sync starts by clearing the join rows (genre re-introduced).
 	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("DELETE FROM media_genre"), "m1").Return(nil).Once()
-	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("DELETE FROM media_category"), "m1").Return(nil).Once()
 	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("DELETE FROM media_author"), "m1").Return(nil).Once()
 	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("DELETE FROM media_artist"), "m1").Return(nil).Once()
 	// One genre "Action": upsert (INSERT OR IGNORE into genre), then look up its id, then link.
@@ -247,7 +294,7 @@ func TestMediaRepo_CreateMedia_InsertsAndSyncs(t *testing.T) {
 		Return([]map[string]any{{"id": "g1"}}, nil).Once()
 	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT OR IGNORE INTO media_genre"), "m1", "g1").Return(nil).Once()
 
-	m := domain.Media{ID: "m1", SourceID: "src", Type: domain.MediaVideo, URL: "u", Title: "T", Genres: []string{"Action"}}
+	m := domain.Media{ID: "m1", SourceID: "src", Type: domain.MediaManga, SubType: "manhwa", URL: "u", Title: "T", Genres: []string{"Action"}}
 	require.NoError(t, repo.CreateMedia(context.Background(), m))
 }
 
@@ -256,8 +303,8 @@ func TestMediaRepo_DeleteMedia_CascadesExplicitly(t *testing.T) {
 	repo := &MediaRepo{db: q}
 
 	for _, prefix := range []string{
-		"DELETE FROM page", "DELETE FROM chapter", "DELETE FROM media_genre",
-		"DELETE FROM media_category", "DELETE FROM media_author", "DELETE FROM media_artist",
+		"DELETE FROM page", "DELETE FROM chapter",
+		"DELETE FROM media_genre", "DELETE FROM media_author", "DELETE FROM media_artist",
 		"DELETE FROM media WHERE",
 	} {
 		q.EXPECT().Exec(mock.Anything, sqlHasPrefix(prefix), "m1").Return(nil).Once()
@@ -287,9 +334,11 @@ func TestMediaRepo_UpdateMedia(t *testing.T) {
 	q := mocks.NewMockQuerier(t)
 	repo := &MediaRepo{db: q}
 
-	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("UPDATE media SET"), anyN(8)...).Return(nil).Once()
-	// No taxonomies → each sync just clears its join rows.
-	for _, p := range []string{"DELETE FROM media_genre", "DELETE FROM media_category", "DELETE FROM media_author", "DELETE FROM media_artist"} {
+	// UPDATE binds id, type, sub_type, url, title, cover_url, description, status,
+	// updated_at = 9 params.
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("UPDATE media SET"), anyN(9)...).Return(nil).Once()
+	// No taxonomies → each sync just clears its join rows (genre re-introduced).
+	for _, p := range []string{"DELETE FROM media_genre", "DELETE FROM media_author", "DELETE FROM media_artist"} {
 		q.EXPECT().Exec(mock.Anything, sqlHasPrefix(p), "m1").Return(nil).Once()
 	}
 
@@ -318,7 +367,7 @@ func TestMediaRepo_CreateMedia_InsertError(t *testing.T) {
 	repo := &MediaRepo{db: q}
 	wantErr := errors.New("insert boom")
 
-	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT INTO media"), anyN(9)...).Return(wantErr).Once()
+	q.EXPECT().Exec(mock.Anything, sqlHasPrefix("INSERT INTO media"), anyN(10)...).Return(wantErr).Once()
 
 	err := repo.CreateMedia(context.Background(), domain.Media{ID: "m1", Title: "T"})
 	assert.ErrorIs(t, err, wantErr)

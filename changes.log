@@ -624,3 +624,174 @@ for the required entry format.
   87.6%, d1 83.9%. `make mocks` + `make docs` regenerated.
 - Ops: apply migration before deploy — `make d1-migrate` or
   `wrangler d1 execute manga --file=migrations/0009_ads.sql`. No new env/secrets.
+
+## 2026-07-07 — Presigned direct-to-R2 upload for HLS video bundles
+- What: Added POST /v1/video/presign — mints one presigned R2 PUT URL per bundle
+  file (playlist + init + segments) under a shared prefix and returns the
+  detected playlistKey, so the browser uploads video bytes straight to R2 instead
+  of streaming the whole bundle through the container (matches the convert/ads
+  presign pattern). Legacy /v1/video/upload kept as a fallback. Hoisted the
+  filename→MIME map to domain.HLSContentType (shared by upload/presign + stream).
+- Why: Routing large HLS episodes through the Worker→Container hit request-body
+  size limits and buffered the whole bundle in container memory. Direct-to-R2
+  removes the container as a bottleneck.
+- Files: internal/domain/video.go (HLSContentType + VideoPresignRequest/File),
+  internal/service/video_service.go (PresignUploads + result types),
+  internal/handler/{ports.go,video_handler.go} (Presign handler; hlsContentType
+  now delegates), internal/server/router.go (route), regenerated mocks + swagger.
+- Tests: go build/vet clean; go test ./... → 352 pass. Gated coverage: service
+  89.6%, handler 87.7%, d1 83.9%, domain 100% (all ≥80). Added service tests
+  (per-file slots, index.m3u8 preference, content-type derivation, custom prefix,
+  empty/oversized/no-playlist/empty-name/presign-error) + 3 handler tests.
+
+## 2026-07-07 — Embed distinct media types in the source listing
+- What: GET /v1/sources (and /v1/admin/sources, same List path) now returns a
+  per-source `mediaTypes` array — the DISTINCT set of media types that source
+  currently carries (subset of manga|video|novel), sorted alphabetically. No
+  per-type counts. Field is omitted (never null) when a source has no media.
+  Populated by folding a single grouped scan of `media` into the listing (no
+  N+1). Get/Create/Update source paths don't populate it (omitempty → absent).
+- Why: The iOS reader enumerates sources and needs to know what each offers
+  without a per-type probe request. Option A (embed types in listing) per agreed
+  design; the rejected option would have added per-type counts.
+- Files: internal/domain/source.go (Source.MediaTypes `json:"mediaTypes,omitempty"`),
+  internal/repository/d1/source_repo.go (mediaTypesBySource single grouped query +
+  fold in List), internal/repository/d1/source_repo_test.go (updated List tests
+  to assert the folded types), regenerated swagger.
+- SQL: `SELECT source_id, type FROM media WHERE type IS NOT NULL AND type <> ''
+  GROUP BY source_id, type ORDER BY source_id, type ASC` — ONE query for the whole
+  listing, not per-source.
+- Auth: GET /v1/sources is gated behind manga.read (router.go read group), NOT
+  public — unchanged here (reported for the iOS side to adapt).
+- Tests: go build/vet clean; go test ./... → pass (domain/handler/d1/service all
+  green). Gated coverage: d1 83.8%, handler 87.7%, service 89.6% (all ≥80). Note:
+  `make cover`'s covdata merge step fails with a pre-existing "no such tool
+  covdata" toolchain error (unrelated to this change); raw per-package coverage
+  from `go test -coverprofile` is reported above.
+
+## 2026-07-08 — Replace freeform "genre" taxonomy with a per-type Media.SubType
+- What: Retired the many-to-many `genre` taxonomy in favor of a single,
+  type-scoped `subType` classifier stored directly on the media row.
+  - Domain: `Media.SubType` (+ `MediaWriteRequest.SubType`) replace `Genres`;
+    new closed vocabulary `SubTypesFor/AllSubTypes/ValidSubType/SubTypeName`
+    (manga: manga|manhwa|manhua, novel: web_novel|light_novel, video:
+    anime_movie|anime_series|tv_series). `TaxonomyGenre` kind removed
+    (category/author/artist remain). `CatalogFilter`: `SubTypes` replaces
+    Include/ExcludeGenres; `GenreMode`→`CategoryMode` (now categories-only).
+  - Repository (d1): `sub_type` is a first-class media column (select/filter/
+    write/backfill); genre join reassembly + `media_genre`/`genre` routing
+    dropped; `Recommend` ranks by shared sub_type (was genre overlap);
+    `Genres()`→`SubTypes()` (distinct present in a source).
+  - Service: `mediaFromRequest` validates subType against type; `Recommendations`
+    takes subTypes; `Genres()`→`SubTypes()`; new `SubTypeCatalog()`.
+  - HTTP: `GET /v1/sources/:id/genres`→`/subtypes`; new public `GET /v1/subtypes`
+    (fixed vocabulary by type); recommendations param `genres`→`subTypes`; filter
+    params `genre|genreExclude|genreMode`→`subType`+`categoryMode`; taxonomy CRUD
+    `/v1/taxonomies/{kind}` drops the `genres` kind; OIDC `TaxonomyWriteKinds`
+    drops `genres`.
+- Why: Genres were being used as a media sub-classification; the user asked to
+  make that explicit and constrained (one sub-type per media, bound to type) and
+  sync the contract to the iOS + admin siblings.
+- Files: internal/domain/manga.go (+subtype registry), internal/domain/subtype_test.go,
+  internal/repository/d1/media_repo.go, internal/service/{media_service,ports}.go,
+  internal/service/taxonomy_service.go (unchanged logic), internal/handler/{media_handler,
+  taxonomy_handler,response,ports}.go, internal/server/router.go, internal/oidc/{util,middleware}.go,
+  migrations/0010_media_subtype.sql (add sub_type + index, backfill manga→'manga',
+  drop genre tables), regenerated mocks + swagger, updated tests across
+  domain/service/handler/d1.
+- Tests: go build ./... && go vet ./... clean; go test ./... → all pass. Gated
+  coverage: domain 83.0%, service 89.0%, handler 87.7%, d1 82.6% (all ≥80%).
+- Notes: forward-only migration; existing manga backfilled to sub_type 'manga',
+  novel/video left blank for operators to set. Sibling repos (griyamedia-admin,
+  mihon) updated in the same task to match the new contract.
+
+## 2026-07-08 — Async cleanup of HLS video bundles on delete (prefix deletion)
+- What: Deleting a video chapter/media now removes the entire hls/{id}/ bundle
+  (init + every segment), not just the recorded playlist key. Added recursive
+  prefix deletion to the existing async cleanup queue:
+  - domain.PageCleanupJob gains `Prefixes []string` (recursive delete targets).
+  - r2.Store.ListKeys(prefix) — paginated ListObjectsV2 (rejects empty prefix).
+  - cleanup: ObjectDeleter gains ListKeys; Producer.EnqueuePrefixes; Worker
+    expands each prefix → keys and batch-deletes with the explicit keys (a list
+    failure is retryable; an empty listing acks).
+  - service.CleanupQueue gains EnqueuePrefixes; MediaService.enqueueCleanup now
+    partitions keys via splitHLSPrefixes — any key under hls/{id}/ collapses to
+    that prefix, so all delete paths (chapter/batch/media/page) get it for free.
+- Why: Video chapters store only the playlist key, so segment objects were
+  orphaned in R2 on delete. A bare "hls/" is never produced (guarded), avoiding a
+  bucket-wide wipe.
+- Files: internal/domain/cleanup.go, internal/repository/r2/store.go,
+  internal/cleanup/cleanup.go, internal/service/ports.go,
+  internal/service/media_service.go, regenerated cleanup-queue mock; tests in
+  internal/cleanup/cleanup_test.go + internal/service/page_cleanup_test.go.
+- Tests: go build/vet clean; go test ./... → 364 pass. Gated coverage: domain
+  83.0%, service 89.9%, handler 87.7%, d1 82.6% (all ≥80).
+- Ops note: the R2 API token needs list (ListObjectsV2) permission for the
+  bundle-prefix cleanup to enumerate segments.
+
+## 2026-07-08 — Genre re-added, categories removed, sub_type managed in DB
+- What:
+  - Re-introduced the multi-value managed `genre` taxonomy (slug-bearing, mirrors
+    the old 0004 shape): `TaxonomyGenre` kind, `taxTableFor` genre routing,
+    `Media.Genres`/`MediaWriteRequest.Genres`, genre group_concat column + sync +
+    delete, and the `/v1/taxonomies/genres` write scope (TaxonomyWriteKinds).
+  - Removed `category` entirely: dropped the category/media_category tables (mig
+    0011), `TaxonomyCategory`, the catalog category filter surface
+    (CatalogFilter.IncludeCategories/ExcludeCategories/CategoryMode + CategoryMode
+    type, filterClauses/include/exclude SQL, query-param parsing) and the
+    `GET /v1/sources/{id}/categories` reader endpoint.
+  - Promoted `sub_type` from a hardcoded Go vocabulary to a managed per-type
+    `sub_type` DB table (seeded with the former 8 slugs). Added repo
+    SubTypeVocab/ValidSubType/CreateSubType/UpdateSubType/DeleteSubType; moved
+    sub-type validity check into MediaService.Create/UpdateMedia (repo-backed);
+    GET /v1/subtypes now serves the DB vocab. New admin CRUD at
+    /v1/admin/subtypes (GET admin.read; POST/PUT/DELETE admin.write) via new
+    SubTypeService + SubTypeHandler, wired in module.go.
+- Why: Reshape the media classification model (full-stack change; backend half).
+- Files: migrations/0011_genre_subtype_managed.sql; internal/domain/manga.go
+  (+taxonomy_test.go, -subtype_test.go); internal/repository/d1/media_repo.go
+  (+query/repo tests); internal/service/{media_service,ports,subtype_service}.go
+  (+ subtype_service_test.go, media_service_test.go); internal/handler/{ports,
+  media_handler,response,taxonomy_handler,subtype_handler}.go (+ tests);
+  internal/oidc/util.go; internal/server/router.go; internal/app/module.go;
+  .mockery.yaml; regenerated mocks + swagger.
+- Tests: go build/vet clean; go test ./... → 377 pass. Gated coverage: service
+  89.6%, handler 87.5%, d1 82.0%, domain high (all ≥80).
+- Notes: Migration NOT applied to dev D1 (operator will run it). Sub-type slug is
+  the global PK (unique across types). MediaSuggestion.Categories (MAL) left
+  untouched — unrelated to the removed taxonomy.
+
+## 2026-07-08 — Invite-gated self-service registration + pending-review intercept
+- What:
+  - Public `POST /v1/register` (no bearer token) redeems a single-use invite
+    code and creates an admin_user with `email_verified=0` (no usable access).
+  - Admin invite management under users.read/write: `POST/GET /v1/invites`,
+    `DELETE /v1/invites/{code}` (own path to avoid the `/v1/users/:id` collision).
+  - `verifyUser` now rejects unverified accounts (errEmailNotVerified); the login
+    UI renders a dedicated "Account under review" intercept page telling the user
+    their email is being reviewed by the server owner (instead of a login error).
+- Why: user request — add register-user feature, invite/allowlist gated, new
+  users land email_verified=false with no scopes; plus intercept page for pending
+  accounts. Since admin_user has no per-user scope column, "no scopes" is enforced
+  by blocking login until an admin verifies (PUT /v1/users/{id}).
+- Files: migrations/0012_user_invite.sql; internal/oidc/{register.go (+register_test.go),
+  user.go, login.go, templates.go}; internal/server/router.go; regenerated swagger.
+- Tests: go build/vet clean; go test ./... → 385 pass (validateInvite unit test:
+  8 cases). oidc is a coverage-exempt infra package (per CLAUDE.md); invite
+  redemption rules extracted to the pure validateInvite() for testability.
+- Notes: Migration 0012 NOT applied to dev D1 (operator runs it via
+  `wrangler d1 execute manga --file=migrations/0012_user_invite.sql`). Work done
+  on `main` per request; the uncommitted genre-subtype WIP in the tree is
+  untouched and NOT committed. No commit made (awaiting your go-ahead).
+
+## 2026-07-08 — S3-compatible object store (MinIO support)
+- What: Made the S3 endpoint/region configurable so the existing r2.Store can
+  target MinIO (or any S3-compatible backend) instead of Cloudflare R2.
+  - Added `Endpoint` + `Region` to `config.R2Config`, read from `S3_ENDPOINT`/
+    `S3_REGION`. `r2.New` uses them when set, else falls back to R2 (account
+    endpoint + region "auto"). Path-style addressing kept (both support it).
+- Why: Allow local/self-hosted deployments to run against MinIO without a
+  second ObjectStore implementation.
+- Files: internal/config/config.go, internal/repository/r2/store.go,
+  worker/index.ts (env allow-list), .env.example (documented new vars).
+- Tests: go build ./... + go vet + go test ./internal/config/... ./internal/repository/r2/... → 11 pass.

@@ -68,6 +68,53 @@ func (_c *MockCleanupQueue_Enqueue_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
+// EnqueuePrefixes provides a mock function with given fields: ctx, prefixes
+func (_m *MockCleanupQueue) EnqueuePrefixes(ctx context.Context, prefixes []string) error {
+	ret := _m.Called(ctx, prefixes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnqueuePrefixes")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, []string) error); ok {
+		r0 = rf(ctx, prefixes)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockCleanupQueue_EnqueuePrefixes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnqueuePrefixes'
+type MockCleanupQueue_EnqueuePrefixes_Call struct {
+	*mock.Call
+}
+
+// EnqueuePrefixes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - prefixes []string
+func (_e *MockCleanupQueue_Expecter) EnqueuePrefixes(ctx interface{}, prefixes interface{}) *MockCleanupQueue_EnqueuePrefixes_Call {
+	return &MockCleanupQueue_EnqueuePrefixes_Call{Call: _e.mock.On("EnqueuePrefixes", ctx, prefixes)}
+}
+
+func (_c *MockCleanupQueue_EnqueuePrefixes_Call) Run(run func(ctx context.Context, prefixes []string)) *MockCleanupQueue_EnqueuePrefixes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]string))
+	})
+	return _c
+}
+
+func (_c *MockCleanupQueue_EnqueuePrefixes_Call) Return(_a0 error) *MockCleanupQueue_EnqueuePrefixes_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockCleanupQueue_EnqueuePrefixes_Call) RunAndReturn(run func(context.Context, []string) error) *MockCleanupQueue_EnqueuePrefixes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewMockCleanupQueue creates a new instance of MockCleanupQueue. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockCleanupQueue(t interface {

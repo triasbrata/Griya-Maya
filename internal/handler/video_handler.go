@@ -35,6 +35,31 @@ type VideoUploadResponse struct {
 	Keys        []string `json:"keys"`
 }
 
+// Presign godoc
+// @Summary  Mint presigned R2 PUT URLs for an HLS bundle (direct browser→R2 upload).
+// @Description Preferred over /v1/video/upload: the browser PUTs each bundle file straight to R2 (no container hop), then registers the returned playlistKey via POST /v1/video. Send every file's name (and optional contentType); keys keep the basenames under one prefix so relative segment URIs resolve.
+// @Tags     video
+// @Accept   json
+// @Produce  json
+// @Param    request body domain.VideoPresignRequest true "Bundle file names to presign"
+// @Success  200 {object} service.VideoPresignResult
+// @Failure  400 {object} handler.ErrorResponse
+// @Security BearerAuth
+// @Router   /v1/video/presign [post]
+func (h *VideoHandler) Presign(ctx context.Context, c *app.RequestContext) {
+	var req domain.VideoPresignRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErr(c, consts.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+	res, err := h.svc.PresignUploads(ctx, req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	writeOK(c, consts.StatusOK, res)
+}
+
 // Upload godoc
 // @Summary  Upload an HLS bundle (m3u8 + segments) into R2 (multipart field "files").
 // @Description Store an already-segmented HLS bundle. Send the playlist and every segment as repeated "files" parts. Returns the written keys and the detected playlist key to pass to POST /v1/video.
@@ -195,22 +220,10 @@ func firstFormValue(values []string) string {
 }
 
 // hlsContentType maps a filename to its HLS MIME type, defaulting to
-// application/octet-stream for unknown extensions.
+// application/octet-stream for unknown extensions. Thin alias over the domain
+// helper so the upload/presign path and the stream proxy agree.
 func hlsContentType(name string) string {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".m3u8":
-		return "application/vnd.apple.mpegurl"
-	case ".ts":
-		return "video/mp2t"
-	case ".m4s", ".mp4":
-		return "video/mp4"
-	case ".vtt":
-		return "text/vtt"
-	case ".aac":
-		return "audio/aac"
-	default:
-		return "application/octet-stream"
-	}
+	return domain.HLSContentType(name)
 }
 
 // parseByteRange parses a single "bytes=start-end" header against a known size.
