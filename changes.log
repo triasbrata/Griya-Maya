@@ -795,3 +795,35 @@ for the required entry format.
 - Files: internal/config/config.go, internal/repository/r2/store.go,
   worker/index.ts (env allow-list), .env.example (documented new vars).
 - Tests: go build ./... + go vet + go test ./internal/config/... ./internal/repository/r2/... → 11 pass.
+
+## 2026-07-08 — Browser signup UI (invite-gated) on the login screen
+- What: Added a self-service registration UI to the embedded OP's login flow.
+  - Login card now shows a "Register" link; new `/register` page renders an
+    invite-code + name/email/password form (htmx), posts to `/register`, and on
+    success shows an "awaiting approval" card (accounts stay unverified until an
+    admin verifies — same rule as the JSON /v1/register API).
+  - New loginUI.register handler reuses existing storage helpers (inviteByCode,
+    validateInvite, userByEmail, createUser, consumeInvite); no new DB logic.
+- Why: Let invited users sign up from the browser instead of only via the JSON API.
+- Files: internal/oidc/login.go (register handler + strings import),
+  internal/oidc/templates.go (register/success templates, login link, loginData
+  fields), internal/oidc/provider.go (mux /register route),
+  internal/server/router.go (bridge /register to the OP handler),
+  internal/oidc/register_test.go (render test).
+- Tests: go build ./... + go vet + go test ./... → 389 pass (was 388).
+
+## 2026-07-08 — Registration: invite code optional (verified vs pending)
+- What: The invite code on self-service register is now optional and controls
+  usability. With a valid single-use code the account is created verified
+  (email_verified=true) and can sign in immediately; without a code it is
+  created unverified and needs admin approval. A supplied-but-invalid code is
+  still rejected (403). Applies to both the JSON API (POST /v1/register) and the
+  browser signup card; the success card branches (ready-to-sign-in vs awaiting
+  approval), and the invite field is labelled optional.
+- Why: Allow trusted invited users to self-serve without an admin approval step
+  while keeping open (code-less) signups gated.
+- Files: internal/oidc/register.go (API handler + swagger @Description),
+  internal/oidc/login.go (browser handler), internal/oidc/templates.go (optional
+  label + branched success), internal/oidc/register_test.go (render tests),
+  internal/server/swagger/* (regenerated via make docs).
+- Tests: go build ./... + go vet + go test ./... → 389 pass.

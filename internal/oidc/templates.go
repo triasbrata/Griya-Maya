@@ -85,7 +85,7 @@ var loginTemplates = template.Must(template.New("").Parse(`
 </body>
 </html>{{end}}
 
-{{define "card"}}{{if .Pending}}{{template "pending" .}}{{else if .Consent}}{{template "consent" .}}{{else}}{{template "login" .}}{{end}}{{end}}
+{{define "card"}}{{if .Success}}{{template "success" .}}{{else if .Register}}{{template "register" .}}{{else if .Pending}}{{template "pending" .}}{{else if .Consent}}{{template "consent" .}}{{else}}{{template "login" .}}{{end}}{{end}}
 
 {{define "pending"}}
   <div class="flex flex-col items-center text-center">
@@ -127,6 +127,73 @@ var loginTemplates = template.Must(template.New("").Parse(`
       Continue
     </button>
   </form>
+  <p class="mt-4 text-center text-sm text-muted-foreground">
+    Don't have an account?
+    <a href="/register?authRequestID={{.ID}}" class="font-medium text-foreground underline-offset-4 hover:underline">Register</a>
+  </p>
+{{end}}
+
+{{define "register"}}
+  <div class="space-y-1.5">
+    <h1 class="text-2xl font-semibold tracking-tight">Create an account</h1>
+    <p class="text-sm text-muted-foreground">Have an invite code? You can sign in right away. Without one, an admin approves your account first.</p>
+  </div>
+  <form hx-post="/register" hx-target="#card" hx-swap="innerHTML" class="mt-6 space-y-4">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <div class="space-y-2">
+      <label for="code" class="text-sm font-medium leading-none">Invite code <span class="font-normal text-muted-foreground">(optional)</span></label>
+      <input id="code" name="code" type="text" value="{{.Code}}" autocomplete="off"
+        class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+    </div>
+    <div class="space-y-2">
+      <label for="reg-name" class="text-sm font-medium leading-none">Name</label>
+      <input id="reg-name" name="name" type="text" value="{{.Name}}" autocomplete="name" autofocus
+        class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+    </div>
+    <div class="space-y-2">
+      <label for="reg-email" class="text-sm font-medium leading-none">Email</label>
+      <input id="reg-email" name="email" type="email" value="{{.Email}}" autocomplete="username"
+        class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+    </div>
+    <div class="space-y-2">
+      <label for="reg-password" class="text-sm font-medium leading-none">Password</label>
+      <input id="reg-password" name="password" type="password" autocomplete="new-password"
+        class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      <p class="text-xs text-muted-foreground">At least 8 characters.</p>
+    </div>
+    <div class="min-h-[1.25rem] text-sm text-destructive">{{.Error}}</div>
+    <button type="submit"
+      class="inline-flex h-9 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      Create account
+    </button>
+  </form>
+  <p class="mt-4 text-center text-sm text-muted-foreground">
+    Already have an account?
+    <a href="/login/username?authRequestID={{.ID}}" class="font-medium text-foreground underline-offset-4 hover:underline">Sign in</a>
+  </p>
+{{end}}
+
+{{define "success"}}
+  <div class="flex flex-col items-center text-center">
+    <span class="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+    </span>
+    {{if .Verified}}
+      <h1 class="text-2xl font-semibold tracking-tight">You're all set</h1>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Your account {{if .Email}}<span class="font-medium text-foreground">{{.Email}}</span> {{end}}is ready. You can sign in now.
+      </p>
+    {{else}}
+      <h1 class="text-2xl font-semibold tracking-tight">Account created</h1>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Your account {{if .Email}}<span class="font-medium text-foreground">{{.Email}}</span> {{end}}was created and is awaiting approval by the server owner. You'll be able to sign in once it's approved.
+      </p>
+    {{end}}
+    <a href="/login/username?authRequestID={{.ID}}"
+      class="mt-6 inline-flex h-9 w-full items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      {{if .Verified}}Sign in{{else}}Back to sign in{{end}}
+    </a>
+  </div>
 {{end}}
 
 {{define "consent"}}
@@ -152,13 +219,19 @@ var loginTemplates = template.Must(template.New("").Parse(`
 {{end}}
 `))
 
-// loginData drives the login, consent, and pending-review renders.
+// loginData drives the login, register, consent, pending-review, and
+// registration-success renders.
 type loginData struct {
 	ID         string
 	Email      string
+	Name       string
+	Code       string
 	Error      string
 	Consent    bool
 	Pending    bool
+	Register   bool
+	Success    bool
+	Verified   bool
 	ClientName string
 	Scopes     []string
 }

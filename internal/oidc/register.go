@@ -11,15 +11,17 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// Self-service registration, gated by single-use invite codes rather than a
-// bearer token. Admins mint invites (POST /v1/invites, users.write); a person
-// then redeems one at POST /v1/register (public). Because admin_user carries no
-// per-user scope column — access scopes are granted by the OP from what the
-// client requests during login — "no scopes for new signups" is enforced by
-// keeping the account unverified: verifyUser rejects unverified users, so a
-// freshly registered account cannot complete login until an admin flips
-// email_verified via PUT /v1/users/{id}. This file lives in the oidc package
-// alongside UserAdminHandler because it shares admin_user and argon2id hashing.
+// Self-service registration at POST /v1/register (public). The invite code is
+// optional and controls whether the account is usable immediately: redeeming a
+// valid single-use invite (minted by admins via POST /v1/invites, users.write)
+// creates a verified account that can log in right away; registering without a
+// code creates an unverified account that an admin must approve (flip
+// email_verified via PUT /v1/users/{id}) before it can log in. Because admin_user
+// carries no per-user scope column — access scopes are granted by the OP from
+// what the client requests during login — verifyUser rejects unverified users,
+// so the unverified path grants no access until approved. This file lives in the
+// oidc package alongside UserAdminHandler because it shares admin_user and
+// argon2id hashing.
 
 // errEmailNotVerified is returned by verifyUser when an otherwise-valid account
 // has not been verified yet, so the login UI can show a distinct message.
@@ -94,8 +96,8 @@ func validateInvite(inv *inviteRow, email string, now int64) error {
 
 // Register redeems an invite and creates an unverified account.
 //
-// @Summary     Register a new account with an invite
-// @Description Public self-service signup gated by a single-use invite code. The new account is created unverified (email_verified=false) and cannot log in until an admin verifies it.
+// @Summary     Register a new account (invite optional)
+// @Description Public self-service signup. The invite code is optional: with a valid single-use code the account is created verified (email_verified=true) and can sign in immediately; without a code it is created unverified and cannot log in until an admin verifies it. A supplied-but-invalid code is rejected.
 // @Tags        users
 // @Accept      json
 // @Produce     json
@@ -113,10 +115,6 @@ func (h *UserAdminHandler) Register(ctx context.Context, c *app.RequestContext) 
 	}
 	req.Code = strings.TrimSpace(req.Code)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-	if req.Code == "" {
-		respondErr(c, consts.StatusBadRequest, "invalid_request", "an invite code is required")
-		return
-	}
 	if !validEmail(req.Email) {
 		respondErr(c, consts.StatusBadRequest, "invalid_request", "a valid email is required")
 		return
@@ -126,14 +124,23 @@ func (h *UserAdminHandler) Register(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 
-	inv, err := h.storage.inviteByCode(ctx, req.Code)
-	if err != nil {
-		respondErr(c, consts.StatusInternalServerError, "internal_error", "could not check invite")
-		return
-	}
-	if err := validateInvite(inv, req.Email, time.Now().Unix()); err != nil {
-		respondErr(c, consts.StatusForbidden, "invite_invalid", err.Error())
-		return
+	// The invite code is optional. With a valid code the account is created
+	// already verified and can sign in immediately; without one it is created
+	// unverified and an admin must approve it (verify email_verified) before it
+	// can log in and be granted any scope. A supplied-but-invalid code is an
+	// error rather than a silent downgrade to unverified.
+	verified := false
+	if req.Code != "" {
+		inv, err := h.storage.inviteByCode(ctx, req.Code)
+		if err != nil {
+			respondErr(c, consts.StatusInternalServerError, "internal_error", "could not check invite")
+			return
+		}
+		if err := validateInvite(inv, req.Email, time.Now().Unix()); err != nil {
+			respondErr(c, consts.StatusForbidden, "invite_invalid", err.Error())
+			return
+		}
+		verified = true
 	}
 
 	existing, err := h.storage.userByEmail(ctx, req.Email)
@@ -146,17 +153,17 @@ func (h *UserAdminHandler) Register(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 
-	// Self-registered accounts are always unverified: an admin must verify them
-	// before they can log in and be granted any scope.
-	rec, err := h.storage.createUser(ctx, req.Email, req.Name, req.Password, false)
+	rec, err := h.storage.createUser(ctx, req.Email, req.Name, req.Password, verified)
 	if err != nil {
 		respondErr(c, consts.StatusInternalServerError, "internal_error", "could not create account")
 		return
 	}
-	// Best-effort consume: the account already exists, so a failed mark only risks
-	// the (email-bound, or single-use) code lingering — surfaced on next redeem by
-	// the duplicate-email 409. Log-free to match the surrounding style.
-	_ = h.storage.consumeInvite(ctx, req.Code, rec.ID)
+	// Consume the invite only when one was redeemed. Best-effort: the account
+	// already exists, so a failed mark only risks the (email-bound, or single-use)
+	// code lingering — surfaced on next redeem by the duplicate-email 409.
+	if req.Code != "" {
+		_ = h.storage.consumeInvite(ctx, req.Code, rec.ID)
+	}
 	respondData(c, consts.StatusCreated, rec)
 }
 

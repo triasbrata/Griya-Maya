@@ -68,6 +68,7 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login/username", login.username)
+	mux.HandleFunc("/register", login.register)
 	mux.Handle("/login/consent", interceptor.HandlerFunc(login.consent))
 	mux.HandleFunc("/logged-out", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

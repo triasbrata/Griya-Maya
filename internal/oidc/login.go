@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -64,6 +65,80 @@ func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 		ClientName: clientName,
 		Scopes:     req.GetScopes(),
 	})
+}
+
+// register handles GET (render the invite-gated signup form) and POST (redeem an
+// invite and create an unverified account). It mirrors the JSON Register handler
+// (register.go) but renders the login card partials so a browser user can sign
+// up from the login screen. The authRequestID is threaded through so, after
+// signing up, the user can return to the pending auth flow via "Sign in".
+func (l *loginUI) register(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		renderPage(w, loginData{ID: r.URL.Query().Get("authRequestID"), Register: true})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "cannot parse form", http.StatusBadRequest)
+		return
+	}
+	data := loginData{
+		ID:       r.FormValue("id"),
+		Register: true,
+		Code:     strings.TrimSpace(r.FormValue("code")),
+		Email:    strings.TrimSpace(strings.ToLower(r.FormValue("email"))),
+		Name:     strings.TrimSpace(r.FormValue("name")),
+	}
+	password := r.FormValue("password")
+
+	fail := func(msg string) {
+		data.Error = msg
+		renderCard(w, data)
+	}
+	switch {
+	case !validEmail(data.Email):
+		fail("A valid email is required")
+		return
+	case len(password) < 8:
+		fail("Password must be at least 8 characters")
+		return
+	}
+
+	// The invite code is optional: a valid code creates a verified account that
+	// can sign in immediately; without one the account stays unverified pending
+	// admin approval (see register.go).
+	verified := false
+	if data.Code != "" {
+		inv, err := l.storage.inviteByCode(r.Context(), data.Code)
+		if err != nil {
+			fail("Could not check invite, please retry")
+			return
+		}
+		if err := validateInvite(inv, data.Email, time.Now().Unix()); err != nil {
+			fail(err.Error())
+			return
+		}
+		verified = true
+	}
+
+	existing, err := l.storage.userByEmail(r.Context(), data.Email)
+	if err != nil {
+		fail("Could not check email, please retry")
+		return
+	}
+	if existing != nil {
+		fail("A user with that email already exists")
+		return
+	}
+
+	rec, err := l.storage.createUser(r.Context(), data.Email, data.Name, password, verified)
+	if err != nil {
+		fail("Could not create account, please retry")
+		return
+	}
+	if data.Code != "" {
+		_ = l.storage.consumeInvite(r.Context(), data.Code, rec.ID)
+	}
+	renderCard(w, loginData{ID: data.ID, Email: data.Email, Success: true, Verified: verified})
 }
 
 // consent finalizes (approve) or aborts (deny) the auth request. On approval it

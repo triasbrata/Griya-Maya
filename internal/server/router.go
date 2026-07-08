@@ -92,6 +92,9 @@ func New(p RouterParams) *server.Hertz {
 		"/end_session",
 		"/device_authorization",
 		"/login/*action",
+		// Browser signup page (invite-gated). Distinct from the JSON API at
+		// /v1/register and DCR at /connect/register.
+		"/register",
 		"/logged-out",
 	} {
 		h.Any(path, opHandler)

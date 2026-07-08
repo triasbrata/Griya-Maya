@@ -2291,9 +2291,10 @@ paths:
       - novel
   /v1/register:
     post:
-      description: Public self-service signup gated by a single-use invite code. The
-        new account is created unverified (email_verified=false) and cannot log in
-        until an admin verifies it.
+      description: 'Public self-service signup. The invite code is optional: with
+        a valid single-use code the account is created verified (email_verified=true)
+        and can sign in immediately; without a code it is created unverified and cannot
+        log in until an admin verifies it. A supplied-but-invalid code is rejected.'
       requestBody:
         content:
           application/json:
@@ -2326,7 +2327,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/oidc.userErrorBody'
           description: Conflict
-      summary: Register a new account with an invite
+      summary: Register a new account (invite optional)
       tags:
       - users
   /v1/sources:
