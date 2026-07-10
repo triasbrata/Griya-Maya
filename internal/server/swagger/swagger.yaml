@@ -192,6 +192,19 @@ components:
           uniqueItems: false
         page:
           type: integer
+        pagination:
+          $ref: '#/components/schemas/domain.MediaPagination'
+      type: object
+    domain.MediaPagination:
+      properties:
+        hasNext:
+          type: boolean
+        page:
+          type: integer
+        perPage:
+          type: integer
+        totalCount:
+          type: integer
       type: object
     domain.MediaStatus:
       type: string
@@ -2406,6 +2419,17 @@ paths:
           items:
             type: string
           type: array
+      - description: Page size override, clamped to [1,100] (default 30)
+        in: query
+        name: limit
+        schema:
+          type: integer
+      - description: 'Only entries updated after this instant: Unix epoch seconds
+          or RFC3339 (delta sync)'
+        in: query
+        name: updated_since
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -2463,6 +2487,17 @@ paths:
           items:
             type: string
           type: array
+      - description: Page size override, clamped to [1,100] (default 30)
+        in: query
+        name: limit
+        schema:
+          type: integer
+      - description: 'Only entries updated after this instant: Unix epoch seconds
+          or RFC3339 (delta sync)'
+        in: query
+        name: updated_since
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -2565,6 +2600,17 @@ paths:
           items:
             type: string
           type: array
+      - description: Page size override, clamped to [1,100] (default 30)
+        in: query
+        name: limit
+        schema:
+          type: integer
+      - description: 'Only entries updated after this instant: Unix epoch seconds
+          or RFC3339 (delta sync)'
+        in: query
+        name: updated_since
+        schema:
+          type: string
       responses:
         "200":
           content:

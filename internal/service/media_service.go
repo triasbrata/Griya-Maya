@@ -118,7 +118,7 @@ func splitHLSPrefixes(keys []string) (plain, prefixes []string) {
 
 // Popular returns the most popular media for a source, honoring the filter.
 func (s *MediaService) Popular(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	res, err := s.repo.List(ctx, sourceID, "popular", page, domain.CatalogPageSize, filter)
+	res, err := s.repo.List(ctx, sourceID, "popular", page, filter.PerPage(), filter)
 	if err != nil {
 		return domain.MediaPage{}, err
 	}
@@ -127,7 +127,7 @@ func (s *MediaService) Popular(ctx context.Context, sourceID string, page int, f
 
 // Latest returns the most recently updated media for a source, honoring the filter.
 func (s *MediaService) Latest(ctx context.Context, sourceID string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	res, err := s.repo.List(ctx, sourceID, "latest", page, domain.CatalogPageSize, filter)
+	res, err := s.repo.List(ctx, sourceID, "latest", page, filter.PerPage(), filter)
 	if err != nil {
 		return domain.MediaPage{}, err
 	}
@@ -136,7 +136,7 @@ func (s *MediaService) Latest(ctx context.Context, sourceID string, page int, fi
 
 // Search matches titles within a source, honoring the filter.
 func (s *MediaService) Search(ctx context.Context, sourceID, query string, page int, filter domain.CatalogFilter) (domain.MediaPage, error) {
-	res, err := s.repo.Search(ctx, sourceID, query, page, domain.CatalogPageSize, filter)
+	res, err := s.repo.Search(ctx, sourceID, query, page, filter.PerPage(), filter)
 	if err != nil {
 		return domain.MediaPage{}, err
 	}

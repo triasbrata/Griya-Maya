@@ -40,6 +40,19 @@ func TestMediaService_Popular_DelegatesToList(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+func TestMediaService_Popular_LimitOverridesPerPage(t *testing.T) {
+	svc, repo, _ := newMediaSvc(t, "")
+	ctx := context.Background()
+	// A caller-supplied limit (clamped by CatalogFilter.PerPage) becomes the
+	// repo perPage; 500 clamps to MaxCatalogPageSize (100).
+	filter := domain.CatalogFilter{Limit: 500}
+	repo.EXPECT().List(ctx, "src", "popular", 1, domain.MaxCatalogPageSize, filter).
+		Return(domain.MediaPage{}, nil)
+
+	_, err := svc.Popular(ctx, "src", 1, filter)
+	require.NoError(t, err)
+}
+
 func TestMediaService_Latest_DelegatesToList(t *testing.T) {
 	svc, repo, _ := newMediaSvc(t, "")
 	ctx := context.Background()

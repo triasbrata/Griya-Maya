@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -13,6 +14,114 @@ import (
 	"github.com/triasbrata/mihon-manga-server/internal/domain"
 	"github.com/triasbrata/mihon-manga-server/internal/repository/d1/mocks"
 )
+
+// mediaRowT is mediaRow plus the total_count window column the catalog page
+// queries now carry (COUNT(*) OVER()); D1 returns it as a float64.
+func mediaRowT(id, subType string, total int) map[string]any {
+	row := mediaRow(id, subType)
+	row["total_count"] = float64(total)
+	return row
+}
+
+func TestMediaRepo_List_TotalCountAndPagination(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	var gotSQL string
+	// perPage=2 → fetch 3 (perPage+1); every row carries the full match count 842.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(3)...).RunAndReturn(
+		func(_ context.Context, sql string, _ ...any) ([]map[string]any, error) {
+			gotSQL = sql
+			return []map[string]any{
+				mediaRowT("m1", "manhwa", 842),
+				mediaRowT("m2", "manhua", 842),
+				mediaRowT("m3", "manga", 842),
+			}, nil
+		})
+
+	got, err := repo.List(context.Background(), "src", "popular", 1, 2, domain.CatalogFilter{})
+	require.NoError(t, err)
+	assert.Contains(t, gotSQL, "COUNT(*) OVER() AS total_count")
+	require.Len(t, got.Items, 2) // trimmed to perPage
+	assert.True(t, got.HasNext)  // look-ahead row present
+	// Body pagination block is the client contract.
+	assert.Equal(t, 1, got.Pagination.Page)
+	assert.Equal(t, 2, got.Pagination.PerPage)
+	assert.Equal(t, 842, got.Pagination.TotalCount)
+	assert.True(t, got.Pagination.HasNext)
+	// Deprecated top-level mirrors preserved.
+	assert.Equal(t, 1, got.Page)
+	assert.True(t, got.HasNext)
+}
+
+func TestMediaRepo_List_HasNextBoundary(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	// Exactly perPage rows returned (no look-ahead) → last page, hasNext false.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(3)...).Return([]map[string]any{
+		mediaRowT("m1", "manhwa", 2),
+		mediaRowT("m2", "manhua", 2),
+	}, nil)
+
+	got, err := repo.List(context.Background(), "src", "latest", 1, 2, domain.CatalogFilter{})
+	require.NoError(t, err)
+	require.Len(t, got.Items, 2)
+	assert.False(t, got.HasNext)
+	assert.False(t, got.Pagination.HasNext)
+	assert.Equal(t, 2, got.Pagination.TotalCount)
+}
+
+func TestMediaRepo_List_EmptyTotalZero(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(3)...).Return(nil, nil)
+
+	got, err := repo.List(context.Background(), "src", "popular", 1, 2, domain.CatalogFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, got.Items)
+	assert.False(t, got.HasNext)
+	assert.Equal(t, 0, got.Pagination.TotalCount)
+}
+
+func TestFilterClausesUpdatedSince(t *testing.T) {
+	// Non-zero instant → an `updated_at >` clause binding unix seconds.
+	qb := newQueryBuilder()
+	ts := time.Unix(1700000000, 0).UTC()
+	clause := filterClauses(qb, domain.CatalogFilter{UpdatedSince: ts})
+	assert.Contains(t, clause, "media.updated_at > ?1")
+	require.Len(t, qb.params, 1)
+	assert.Equal(t, int64(1700000000), qb.params[0])
+
+	// Zero instant → filter omitted entirely.
+	qb2 := newQueryBuilder()
+	clause2 := filterClauses(qb2, domain.CatalogFilter{})
+	assert.NotContains(t, clause2, "updated_at")
+	assert.Empty(t, qb2.params)
+}
+
+func TestMediaRepo_List_UpdatedSinceBindsAndFilters(t *testing.T) {
+	q := mocks.NewMockQuerier(t)
+	repo := &MediaRepo{db: q}
+
+	var gotSQL string
+	var params []any
+	// source(1) + updated_since(1) + limit + offset = 4 bound params.
+	q.EXPECT().Query(mock.Anything, mock.Anything, anyN(4)...).RunAndReturn(
+		func(_ context.Context, sql string, p ...any) ([]map[string]any, error) {
+			gotSQL, params = sql, p
+			return []map[string]any{mediaRowT("fresh", "manhwa", 1)}, nil
+		})
+
+	ts := time.Unix(1700000000, 0).UTC()
+	got, err := repo.List(context.Background(), "src", "latest", 1, 2,
+		domain.CatalogFilter{UpdatedSince: ts})
+	require.NoError(t, err)
+	require.Len(t, got.Items, 1)
+	assert.Contains(t, gotSQL, "media.updated_at > ")
+	assert.Contains(t, params, int64(1700000000))
+}
 
 // anyN returns n mock.Anything matchers for spreading into a variadic EXPECT.
 func anyN(n int) []any {

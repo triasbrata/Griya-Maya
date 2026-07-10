@@ -33,6 +33,8 @@ func NewMediaHandler(svc MediaService, store service.ObjectStore) *MediaHandler 
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
 // @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
+// @Param    limit           query int      false "Page size override, clamped to [1,100] (default 30)"
+// @Param    updated_since   query string   false "Only entries updated after this instant: Unix epoch seconds or RFC3339 (delta sync)"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/popular [get]
 func (h *MediaHandler) Popular(ctx context.Context, c *app.RequestContext) {
@@ -55,6 +57,8 @@ func (h *MediaHandler) Popular(ctx context.Context, c *app.RequestContext) {
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
 // @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
+// @Param    limit           query int      false "Page size override, clamped to [1,100] (default 30)"
+// @Param    updated_since   query string   false "Only entries updated after this instant: Unix epoch seconds or RFC3339 (delta sync)"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/latest [get]
 func (h *MediaHandler) Latest(ctx context.Context, c *app.RequestContext) {
@@ -78,6 +82,8 @@ func (h *MediaHandler) Latest(ctx context.Context, c *app.RequestContext) {
 // @Param    order           query string   false "Sort direction" Enums(asc, desc)
 // @Param    type            query []string false "Media type (repeatable): manga|video|novel"
 // @Param    subType         query []string false "Filter by sub-type slug (repeatable): e.g. manga|manhwa|manhua"
+// @Param    limit           query int      false "Page size override, clamped to [1,100] (default 30)"
+// @Param    updated_since   query string   false "Only entries updated after this instant: Unix epoch seconds or RFC3339 (delta sync)"
 // @Success  200 {object} domain.MediaPage
 // @Router   /v1/sources/{sourceId}/search [get]
 func (h *MediaHandler) Search(ctx context.Context, c *app.RequestContext) {

@@ -184,7 +184,7 @@ handler  →  service  →  repository (d1 / r2 / kv)  +  convert
 - `util.go` — scope consts (`ScopeMangaRead`/`ScopeMangaWrite`), argon2id hashing, D1 value/JSON helpers, `randToken`.
 
 **Domain — `internal/domain`** (pure types, no deps)
-- `manga.go` — the unified **`Media`** entity (+ `MediaType` manga|video|novel), `Chapter` (`MediaID`), `Page`, `StoredPage`, `MediaPage`, `CatalogFilter` (type/genre/category filters), `Taxonomy`/`TaxonomyKind`, `MediaWriteRequest`/`ChapterWriteRequest`/`TaxonomyWriteRequest`, page-kind consts.
+- `manga.go` — the unified **`Media`** entity (+ `MediaType` manga|video|novel), `Chapter` (`MediaID`), `Page`, `StoredPage`, `MediaPage` (+ embedded `MediaPagination` body block: page/perPage/totalCount/hasNext), `CatalogFilter` (type/sub_type + `UpdatedSince`/`Limit`, `PerPage()` clamp), `Taxonomy`/`TaxonomyKind`, `MediaWriteRequest`/`ChapterWriteRequest`/`TaxonomyWriteRequest`, page-kind consts.
 - `convert.go` — `ConvertJob`, `ConvertRequest` (`MediaID`), `ArchiveFormat`, `ConvertStatus`.
 - `ad.go` — house-ad types: `Ad` (reader DTO, presigned imageUrl), `StoredAd` (persisted, r2Key), `AdWriteRequest`.
 - `novel.go` — novel request/types. `video.go` — video request/types.

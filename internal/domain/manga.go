@@ -73,11 +73,27 @@ type SubTypeWriteRequest struct {
 	Name string    `json:"name"`
 }
 
-// MediaPage is a paginated slice of catalog entries.
+// MediaPagination is the pagination block carried in a catalog feed response
+// body (popular / latest / search). It is the authoritative source the iOS
+// client decodes for its indexing progress bar and resumable delta sync. The
+// same numbers also ride in the X-Pagination-* response headers for
+// backward-compat, but the body block is the contract.
+type MediaPagination struct {
+	Page       int  `json:"page"`
+	PerPage    int  `json:"perPage"`
+	TotalCount int  `json:"totalCount"`
+	HasNext    bool `json:"hasNext"`
+}
+
+// MediaPage is a paginated slice of catalog entries. Pagination now lives in the
+// embedded Pagination block (the client contract); the top-level HasNext/Page
+// mirrors are retained for backward-compat with existing consumers and must not
+// be removed.
 type MediaPage struct {
-	Items   []Media `json:"items"`
-	HasNext bool    `json:"hasNext"`
-	Page    int     `json:"page"`
+	Items      []Media         `json:"items"`
+	Pagination MediaPagination `json:"pagination"`
+	HasNext    bool            `json:"hasNext"`
+	Page       int             `json:"page"`
 }
 
 // Chapter is a single chapter belonging to a media entry.
@@ -176,6 +192,25 @@ type CatalogFilter struct {
 	// SubTypes filters the media `sub_type` column directly (e.g. "manhwa").
 	// Multiple sub-types combine as OR (media.sub_type IN (...)).
 	SubTypes []string
+	// Limit is the caller's requested page size (?limit=). Zero/negative means
+	// "unset" — resolve the effective size via PerPage(), which clamps and
+	// applies the CatalogPageSize default.
+	Limit int
+	// UpdatedSince, when non-zero, restricts the feed to entries changed strictly
+	// after this instant (media.updated_at > UpdatedSince). Zero disables it.
+	UpdatedSince time.Time
+}
+
+// PerPage resolves the effective catalog page size: the caller's Limit clamped
+// to [1, MaxCatalogPageSize], or CatalogPageSize when unset (<= 0) / invalid.
+func (f CatalogFilter) PerPage() int {
+	if f.Limit <= 0 {
+		return CatalogPageSize
+	}
+	if f.Limit > MaxCatalogPageSize {
+		return MaxCatalogPageSize
+	}
+	return f.Limit
 }
 
 // SortColumn maps a filter sort key to a media column. It is the single source

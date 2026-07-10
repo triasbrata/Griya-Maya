@@ -27,3 +27,25 @@ func TestCatalogFilter_SortColumn(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogFilter_PerPage(t *testing.T) {
+	cases := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"unset defaults", 0, CatalogPageSize},
+		{"negative defaults", -5, CatalogPageSize},
+		{"within range passes through", 50, 50},
+		{"lower bound", 1, 1},
+		{"upper bound", MaxCatalogPageSize, MaxCatalogPageSize},
+		{"over max clamps", 500, MaxCatalogPageSize},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (CatalogFilter{Limit: tc.limit}).PerPage(); got != tc.want {
+				t.Errorf("PerPage() with limit=%d = %d, want %d", tc.limit, got, tc.want)
+			}
+		})
+	}
+}

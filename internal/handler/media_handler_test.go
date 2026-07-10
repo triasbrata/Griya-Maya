@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/stretchr/testify/assert"
@@ -56,6 +57,63 @@ func TestMediaHandler_Popular_DefaultsAndError(t *testing.T) {
 	h.Popular(context.Background(), c)
 
 	assert.Equal(t, consts.StatusNotFound, c.Response.StatusCode())
+}
+
+func TestMediaHandler_Latest_ParsesLimitAndEpochUpdatedSince(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	// limit + updated_since (Unix epoch seconds) flow into the CatalogFilter.
+	wantFilter := domain.CatalogFilter{
+		Limit:        50,
+		UpdatedSince: time.Unix(1700000000, 0).UTC(),
+	}
+	svc.EXPECT().Latest(mock.Anything, "src", 1, wantFilter).Return(domain.MediaPage{}, nil)
+
+	c := newCtx("GET",
+		"/v1/sources/src/latest?limit=50&updated_since=1700000000",
+		map[string]string{"sourceId": "src"}, nil, "")
+	h.Latest(context.Background(), c)
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+}
+
+func TestMediaHandler_Search_ParsesRFC3339UpdatedSince(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	// updated_since accepts an RFC3339 timestamp too; unset limit stays 0.
+	wantFilter := domain.CatalogFilter{
+		UpdatedSince: time.Date(2023, 11, 14, 22, 13, 20, 0, time.UTC),
+	}
+	svc.EXPECT().Search(mock.Anything, "src", "naruto", 1, wantFilter).Return(domain.MediaPage{}, nil)
+
+	c := newCtx("GET",
+		"/v1/sources/src/search?q=naruto&updated_since=2023-11-14T22:13:20Z",
+		map[string]string{"sourceId": "src"}, nil, "")
+	h.Search(context.Background(), c)
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+}
+
+func TestMediaHandler_Popular_BodyPaginationShape(t *testing.T) {
+	h, svc, _ := newMediaHandler(t)
+
+	page := domain.MediaPage{
+		Items:      []domain.Media{{ID: "m1"}},
+		Pagination: domain.MediaPagination{Page: 1, PerPage: 30, TotalCount: 842, HasNext: true},
+		HasNext:    true,
+		Page:       1,
+	}
+	svc.EXPECT().Popular(mock.Anything, "src", 1, mock.Anything).Return(page, nil)
+
+	c := newCtx("GET", "/v1/sources/src/popular", map[string]string{"sourceId": "src"}, nil, "")
+	h.Popular(context.Background(), c)
+
+	assert.Equal(t, consts.StatusOK, c.Response.StatusCode())
+	// The exact wire contract the iOS client decodes off data.pagination.
+	body := string(c.Response.Body())
+	for _, want := range []string{
+		`"pagination":`, `"page":1`, `"perPage":30`, `"totalCount":842`, `"hasNext":true`,
+	} {
+		assert.Contains(t, body, want)
+	}
 }
 
 func TestMediaHandler_Latest(t *testing.T) {

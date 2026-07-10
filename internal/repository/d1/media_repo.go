@@ -39,6 +39,14 @@ const mediaColumns = `media.id, media.source_id, media.type, media.sub_type, med
         (SELECT group_concat(a.name, char(31))  FROM media_author ma    JOIN author a    ON a.id  = ma.author_id   WHERE ma.media_id = media.id) AS authors,
         (SELECT group_concat(ar.name, char(31)) FROM media_artist mr    JOIN artist ar   ON ar.id = mr.artist_id   WHERE mr.media_id = media.id) AS artists`
 
+// countWindow appends the total matching-row count to each catalog page row via
+// a window function. COUNT(*) OVER() is evaluated over the full WHERE-matched
+// set *before* LIMIT/OFFSET, so it yields totalCount (every row matching the
+// same filter) in a single query alongside the page fetch — no extra round trip
+// and no extra bound params (keeping positional placeholders stable). Read off
+// the first row by toMediaPage.
+const countWindow = `, COUNT(*) OVER() AS total_count`
+
 // List returns a page of catalog entries for a feed ("popular" | "latest"),
 // honoring the catalog filter (sort/direction, type + genre/category filters).
 func (r *MediaRepo) List(ctx context.Context, sourceID, order string, page, perPage int, filter domain.CatalogFilter) (domain.MediaPage, error) {
@@ -53,7 +61,7 @@ func (r *MediaRepo) List(ctx context.Context, sourceID, order string, page, perP
 	where := "media.source_id = " + qb.bind(sourceID)
 	where += filterClauses(qb, filter)
 
-	sql := "SELECT " + mediaColumns + " FROM media WHERE " + where +
+	sql := "SELECT " + mediaColumns + countWindow + " FROM media WHERE " + where +
 		" ORDER BY " + orderByClause(filter, feedDefault) +
 		" LIMIT " + qb.bind(perPage+1) + " OFFSET " + qb.bind((page-1)*perPage)
 
@@ -74,7 +82,7 @@ func (r *MediaRepo) Search(ctx context.Context, sourceID, query string, page, pe
 
 	// Search sorts by title order unless the caller picked a sort.
 	feedDefault := "title"
-	sql := "SELECT " + mediaColumns + " FROM media WHERE " + where +
+	sql := "SELECT " + mediaColumns + countWindow + " FROM media WHERE " + where +
 		" ORDER BY " + orderByClause(filter, feedDefault) +
 		" LIMIT " + qb.bind(perPage+1) + " OFFSET " + qb.bind((page-1)*perPage)
 
@@ -116,7 +124,7 @@ func (r *MediaRepo) Recommend(ctx context.Context, sourceID string, subTypes, ex
 		where += " AND media.id NOT IN (" + strings.Join(ph, ", ") + ")"
 	}
 
-	sql := "SELECT " + mediaColumns + " FROM media WHERE " + where +
+	sql := "SELECT " + mediaColumns + countWindow + " FROM media WHERE " + where +
 		" ORDER BY popularity DESC, title ASC" +
 		" LIMIT " + qb.bind(perPage+1) + " OFFSET " + qb.bind((page-1)*perPage)
 
@@ -238,6 +246,12 @@ func filterClauses(qb *queryBuilder, f domain.CatalogFilter) string {
 			ph[i] = qb.bind(s)
 		}
 		b.WriteString(" AND media.sub_type IN (" + strings.Join(ph, ", ") + ")")
+	}
+
+	// UPDATED_SINCE: restrict to entries changed strictly after the instant
+	// (stored as unix seconds), powering the client's incremental (delta) sync.
+	if !f.UpdatedSince.IsZero() {
+		b.WriteString(" AND media.updated_at > " + qb.bind(f.UpdatedSince.Unix()))
 	}
 
 	return b.String()
@@ -647,6 +661,13 @@ func normPage(page, perPage int) (int, int) {
 }
 
 func toMediaPage(rows []map[string]any, page, perPage int) domain.MediaPage {
+	// total_count (COUNT(*) OVER()) is identical on every returned row and
+	// reflects the full filter match, independent of LIMIT. Read it before the
+	// perPage+1 look-ahead row is trimmed. Zero rows → zero total.
+	total := 0
+	if len(rows) > 0 {
+		total = intVal(rows[0]["total_count"])
+	}
 	hasNext := len(rows) > perPage
 	if hasNext {
 		rows = rows[:perPage]
@@ -655,7 +676,17 @@ func toMediaPage(rows []map[string]any, page, perPage int) domain.MediaPage {
 	for _, row := range rows {
 		items = append(items, mediaFromRow(row))
 	}
-	return domain.MediaPage{Items: items, HasNext: hasNext, Page: page}
+	return domain.MediaPage{
+		Items:   items,
+		HasNext: hasNext,
+		Page:    page,
+		Pagination: domain.MediaPagination{
+			Page:       page,
+			PerPage:    perPage,
+			TotalCount: total,
+			HasNext:    hasNext,
+		},
+	}
 }
 
 func mediaFromRow(row map[string]any) domain.Media {

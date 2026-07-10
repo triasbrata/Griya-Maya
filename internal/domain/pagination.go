@@ -1,8 +1,12 @@
 package domain
 
-// CatalogPageSize is the fixed page size for the offset-paginated catalog
-// endpoints (popular / latest / search).
+// CatalogPageSize is the default page size for the offset-paginated catalog
+// endpoints (popular / latest / search) when no ?limit= override is supplied.
 const CatalogPageSize = 30
+
+// MaxCatalogPageSize caps a caller-supplied ?limit= page-size override so a
+// single request can't demand an unbounded slice of the catalog.
+const MaxCatalogPageSize = 100
 
 // PaginationKind distinguishes the two supported pagination strategies.
 type PaginationKind string

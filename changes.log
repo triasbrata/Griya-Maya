@@ -827,3 +827,33 @@ for the required entry format.
   label + branched success), internal/oidc/register_test.go (render tests),
   internal/server/swagger/* (regenerated via make docs).
 - Tests: go build ./... + go vet + go test ./... → 389 pass.
+
+## 2026-07-09 — Catalog feeds: body pagination + updated_since + limit
+- What: Three backward-compatible additions to the per-source catalog feeds
+  (GET /v1/sources/:id/{latest,popular,search}).
+  1. Response `data` now embeds a `pagination` object
+     `{page, perPage, totalCount, hasNext}` — the client contract for the
+     indexing progress bar / delta sync. `totalCount` = COUNT(*) over the same
+     WHERE as the page (a `COUNT(*) OVER()` window column, single query, no extra
+     bound params). Legacy top-level `hasNext`/`page` and the `X-Pagination-*`
+     headers are kept as-is for backward-compat.
+  2. `?updated_since=` filter (Unix epoch seconds OR RFC3339; parsed tolerantly,
+     ignored when empty/unparseable) → `AND media.updated_at > ?` on all three
+     feeds.
+  3. `?limit=` page-size override, clamped to [1,100], default CatalogPageSize
+     (30) when absent/invalid, threaded through the service to the repo perPage.
+- Why: iOS unified catalog needs %-accurate progress (totalCount), resumable
+  incremental sync (updated_since), and tunable page size (limit).
+- Files: internal/domain/manga.go (MediaPagination type, MediaPage.Pagination,
+  CatalogFilter.Limit/UpdatedSince + PerPage()), internal/domain/pagination.go
+  (MaxCatalogPageSize=100), internal/repository/d1/media_repo.go (countWindow
+  column on List/Search/Recommend, updated_since clause in filterClauses,
+  toMediaPage fills Pagination), internal/handler/response.go (parseCatalogFilter
+  reads limit + parseUpdatedSince), internal/handler/media_handler.go (swagger
+  @Param for limit/updated_since), internal/service/media_service.go (perPage =
+  filter.PerPage()), internal/server/swagger/* (regenerated via make docs);
+  tests: domain/manga_test.go, repository/d1/media_repo_query_test.go,
+  handler/media_handler_test.go, service/media_service_test.go.
+- Tests: go build ./... + go vet ./... clean; go test ./... → 405 pass (was 389).
+  Coverage of gated pkgs: domain 100%, service 89.6%, handler 87.5%, d1 82.4%
+  (all ≥ 80%).

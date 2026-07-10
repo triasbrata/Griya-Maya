@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -83,12 +84,33 @@ func queryAll(c *app.RequestContext, key string) []string {
 //	type=manga|video|novel(…)   subType=<slug>(…)
 //
 // `type` and `subType` filter the media columns directly (both repeatable /
-// comma-joinable). Category filtering was removed.
+// comma-joinable). Category filtering was removed. `limit` overrides the page
+// size (clamped by CatalogFilter.PerPage); `updated_since` restricts the feed to
+// entries changed after a Unix-seconds or RFC3339 instant (for delta sync).
 func parseCatalogFilter(c *app.RequestContext) domain.CatalogFilter {
 	return domain.CatalogFilter{
-		Sort:      c.Query("sort"),
-		Ascending: strings.EqualFold(c.Query("order"), "asc"),
-		Types:     queryAll(c, "type"),
-		SubTypes:  queryAll(c, "subType"),
+		Sort:         c.Query("sort"),
+		Ascending:    strings.EqualFold(c.Query("order"), "asc"),
+		Types:        queryAll(c, "type"),
+		SubTypes:     queryAll(c, "subType"),
+		Limit:        queryInt(c, "limit", 0),
+		UpdatedSince: parseUpdatedSince(c.Query("updated_since")),
 	}
+}
+
+// parseUpdatedSince tolerantly parses the ?updated_since= filter value as either
+// a Unix epoch-seconds integer or an RFC3339 timestamp. An empty or unparseable
+// value yields the zero time, which disables the filter.
+func parseUpdatedSince(v string) time.Time {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return time.Time{}
+	}
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return time.Unix(secs, 0).UTC()
+	}
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
 }
