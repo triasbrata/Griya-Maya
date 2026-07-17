@@ -135,6 +135,27 @@ type OIDCConfig struct {
 	// public PKCE client (comma-separated in IOS_REDIRECT_URIS). Typically the
 	// app's custom scheme, e.g. mihon://auth/callback.
 	IOSRedirectURIs []string
+
+	// WebAuthn (passkey / biometric login) configuration. When WebAuthnRPID is
+	// empty the feature is disabled (registration/login endpoints return 503) so
+	// local dev boots without it.
+	//
+	// WebAuthnRPID is the Relying Party ID — the effective registrable domain the
+	// credential is scoped to (no scheme/port), e.g. "griyamedia.brata.cloud". It
+	// must be a registrable suffix of every browser origin in WebAuthnRPOrigins and
+	// match the domain served in the Apple App Site Association file for native iOS.
+	WebAuthnRPID string
+	// WebAuthnRPDisplayName is shown by the authenticator during registration.
+	WebAuthnRPDisplayName string
+	// WebAuthnRPOrigins are the fully-qualified origins permitted to run ceremonies
+	// (comma-separated in WEBAUTHN_RP_ORIGINS): the admin-web origin(s) plus
+	// "https://<rpid>" for native iOS.
+	WebAuthnRPOrigins []string
+	// WebAuthnAppleAppIDs are the Apple application identifiers (TEAMID.BUNDLEID)
+	// served in /.well-known/apple-app-site-association so native iOS passkeys
+	// (ASAuthorizationController) associate with this domain. Comma-separated in
+	// WEBAUTHN_APPLE_APP_IDS.
+	WebAuthnAppleAppIDs []string
 }
 
 // ConnectionsConfig configures external-source OAuth connection storage.
@@ -209,6 +230,10 @@ func Load() (Config, error) {
 				"http://localhost:3000/auth/callback")),
 			IOSRedirectURIs: splitCSV(env("IOS_REDIRECT_URIS",
 				"mihon://auth/callback")),
+			WebAuthnRPID:          os.Getenv("WEBAUTHN_RP_ID"),
+			WebAuthnRPDisplayName: env("WEBAUTHN_RP_DISPLAY_NAME", "GriyaMedia"),
+			WebAuthnRPOrigins:     splitCSV(os.Getenv("WEBAUTHN_RP_ORIGINS")),
+			WebAuthnAppleAppIDs:   splitCSV(os.Getenv("WEBAUTHN_APPLE_APP_IDS")),
 		},
 		Image: ImageConfig{
 			Quality:        envInt("AVIF_QUALITY", 55),

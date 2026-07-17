@@ -721,6 +721,18 @@ components:
         name:
           type: string
       type: object
+    oidc.webauthnCredentialResponse:
+      properties:
+        id:
+          description: base64url credential id
+          type: string
+      type: object
+    oidc.webauthnOptions:
+      properties:
+        publicKey:
+          additionalProperties: {}
+          type: object
+      type: object
     service.PresignItem:
       properties:
         key:
@@ -3100,6 +3112,80 @@ paths:
       summary: Upload an HLS bundle (m3u8 + segments) into R2 (multipart field "files").
       tags:
       - video
+  /v1/webauthn/register/begin:
+    post:
+      description: Returns WebAuthn PublicKeyCredentialCreationOptions for the authenticated
+        user. Pass the result to navigator.credentials.create (browser) or ASAuthorizationController
+        (native iOS), then submit the attestation to /v1/webauthn/register/finish.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.webauthnOptions'
+          description: CredentialCreation options
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: passkeys not configured
+      security:
+      - BearerAuth: []
+      summary: Begin passkey registration
+      tags:
+      - webauthn
+  /v1/webauthn/register/finish:
+    post:
+      description: Verifies the authenticator attestation from RegisterBegin and stores
+        the credential for the authenticated user. Optional ?name= labels the device.
+      parameters:
+      - description: device label
+        in: query
+        name: name
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.webauthnCredentialResponse'
+          description: registered credential id
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/oidc.userErrorBody'
+          description: passkeys not configured
+      security:
+      - BearerAuth: []
+      summary: Finish passkey registration
+      tags:
+      - webauthn
 servers:
 - url: /
 tags:

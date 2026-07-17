@@ -41,6 +41,11 @@ export class MangaServer extends Container {
     OIDC_ADMIN_PASSWORD: this.env.OIDC_ADMIN_PASSWORD,
     ADMIN_REDIRECT_URIS: this.env.ADMIN_REDIRECT_URIS,
     IOS_REDIRECT_URIS: this.env.IOS_REDIRECT_URIS,
+    // WebAuthn / passkey (biometric) login. Empty WEBAUTHN_RP_ID disables it.
+    WEBAUTHN_RP_ID: this.env.WEBAUTHN_RP_ID,
+    WEBAUTHN_RP_DISPLAY_NAME: this.env.WEBAUTHN_RP_DISPLAY_NAME,
+    WEBAUTHN_RP_ORIGINS: this.env.WEBAUTHN_RP_ORIGINS,
+    WEBAUTHN_APPLE_APP_IDS: this.env.WEBAUTHN_APPLE_APP_IDS,
     // External-source OAuth connections: 32-byte key encrypting secrets/tokens.
     CONNECTIONS_ENC_KEY: this.env.CONNECTIONS_ENC_KEY,
     // Browser CORS allowlist for the admin panel (comma-separated origins).

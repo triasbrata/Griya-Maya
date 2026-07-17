@@ -82,6 +82,59 @@ var loginTemplates = template.Must(template.New("").Parse(`
     </div>
     <div id="card" class="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6 sm:p-8">{{template "card" .}}</div>
   </div>
+  <script>
+  (function(){
+    function b64urlToBuf(s){
+      s = s.replace(/-/g,'+').replace(/_/g,'/');
+      var pad = s.length % 4; if(pad){ s += '===='.slice(pad); }
+      var bin = atob(s); var buf = new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++){ buf[i] = bin.charCodeAt(i); }
+      return buf.buffer;
+    }
+    function bufToB64url(buf){
+      var bytes = new Uint8Array(buf); var bin = '';
+      for(var i=0;i<bytes.length;i++){ bin += String.fromCharCode(bytes[i]); }
+      return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    }
+    async function passkeyLogin(id, errEl){
+      if(errEl){ errEl.textContent = ''; }
+      try{
+        var begin = await fetch('/login/webauthn/begin?authRequestID=' + encodeURIComponent(id), { method: 'POST' });
+        var beginData = await begin.json();
+        if(!begin.ok){ throw new Error(beginData.error || 'Could not start passkey sign-in'); }
+        var options = beginData.publicKey;
+        options.challenge = b64urlToBuf(options.challenge);
+        if(options.allowCredentials){
+          options.allowCredentials = options.allowCredentials.map(function(c){ c.id = b64urlToBuf(c.id); return c; });
+        }
+        var assertion = await navigator.credentials.get({ publicKey: options });
+        var payload = {
+          id: assertion.id,
+          rawId: bufToB64url(assertion.rawId),
+          type: assertion.type,
+          response: {
+            authenticatorData: bufToB64url(assertion.response.authenticatorData),
+            clientDataJSON: bufToB64url(assertion.response.clientDataJSON),
+            signature: bufToB64url(assertion.response.signature),
+            userHandle: assertion.response.userHandle ? bufToB64url(assertion.response.userHandle) : null
+          }
+        };
+        var finish = await fetch('/login/webauthn/finish?authRequestID=' + encodeURIComponent(id), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await finish.json();
+        if(!finish.ok){ throw new Error(data.error || 'Passkey verification failed'); }
+        if(data.redirect){ window.location = data.redirect; }
+      }catch(err){ if(errEl){ errEl.textContent = err.message || 'Passkey sign-in failed'; } }
+    }
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('#passkey-btn') : null;
+      if(!btn){ return; }
+      e.preventDefault();
+      passkeyLogin(btn.getAttribute('data-auth-id'), document.getElementById('passkey-error'));
+    });
+  })();
+  </script>
 </body>
 </html>{{end}}
 
@@ -127,6 +180,19 @@ var loginTemplates = template.Must(template.New("").Parse(`
       Continue
     </button>
   </form>
+  {{if .WebAuthn}}
+  <div class="mt-4">
+    <div class="relative flex items-center justify-center text-xs uppercase text-muted-foreground">
+      <span class="bg-card px-2">or</span>
+    </div>
+    <button type="button" id="passkey-btn" data-auth-id="{{.ID}}"
+      class="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      Sign in with passkey
+    </button>
+    <div id="passkey-error" class="mt-2 min-h-[1.25rem] text-center text-sm text-destructive"></div>
+  </div>
+  {{end}}
   <p class="mt-4 text-center text-sm text-muted-foreground">
     Don't have an account?
     <a href="/register?authRequestID={{.ID}}" class="font-medium text-foreground underline-offset-4 hover:underline">Register</a>
@@ -197,12 +263,25 @@ var loginTemplates = template.Must(template.New("").Parse(`
 {{end}}
 
 {{define "consent"}}
-  <div class="space-y-1.5">
+  <div class="flex flex-col items-center text-center">
+    <span class="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+    </span>
     <h1 class="text-2xl font-semibold tracking-tight">Authorize {{.ClientName}}</h1>
-    <p class="text-sm text-muted-foreground">is requesting access to your account.</p>
+    <p class="mt-2 text-sm text-muted-foreground"><span class="font-medium text-foreground">{{.ClientName}}</span> wants permission to:</p>
   </div>
   <ul class="mt-6 space-y-2">
-    {{range .Scopes}}<li class="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">{{.}}</li>{{end}}
+    {{range .Scopes}}
+    <li class="flex items-start gap-3 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+      <span class="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </span>
+      <div class="min-w-0">
+        <div class="text-sm font-medium leading-tight text-foreground">{{.Label}}</div>
+        <div class="text-xs text-muted-foreground">{{.Name}}</div>
+      </div>
+    </li>
+    {{end}}
   </ul>
   <form hx-post="/login/consent" hx-target="#card" hx-swap="innerHTML" class="mt-6 space-y-3">
     <input type="hidden" name="id" value="{{.ID}}">
@@ -216,6 +295,7 @@ var loginTemplates = template.Must(template.New("").Parse(`
       Deny
     </button>
   </form>
+  <p class="mt-4 text-center text-xs text-muted-foreground">You won't be asked again for these permissions.</p>
 {{end}}
 `))
 
@@ -233,5 +313,7 @@ type loginData struct {
 	Success    bool
 	Verified   bool
 	ClientName string
-	Scopes     []string
+	Scopes     []scopeView
+	// WebAuthn enables the "Sign in with passkey" button on the login card.
+	WebAuthn bool
 }

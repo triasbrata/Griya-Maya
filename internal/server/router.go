@@ -34,6 +34,7 @@ type RouterParams struct {
 	OIDC       *oidc.Provider
 	DCR        *oidc.DCRHandler
 	UserAdmin  *oidc.UserAdminHandler
+	WebAuthn   *oidc.WebAuthnHandler
 	Health     *handler.HealthHandler
 	Media      *handler.MediaHandler
 	Source     *handler.SourceHandler
@@ -278,6 +279,16 @@ func New(p RouterParams) *server.Hertz {
 	novel := h.Group("/v1/novel", p.OIDC.Middleware())
 	{
 		novel.POST("", p.Novel.Register)
+	}
+
+	// Passkey (biometric / WebAuthn) registration for the signed-in user. Gated
+	// by any valid access token (the subject is read from the token); a user must
+	// already be authenticated to add a passkey. Passkey *login* is served on the
+	// OP itself at /login/webauthn/* (mounted via the /login/*action bridge above).
+	webauthn := h.Group("/v1/webauthn", p.OIDC.MiddlewareScope(""))
+	{
+		webauthn.POST("/register/begin", p.WebAuthn.RegisterBegin)
+		webauthn.POST("/register/finish", p.WebAuthn.RegisterFinish)
 	}
 
 	// OAuth2 Dynamic Client Registration (RFC 7591/7592), backed by D1. RFC 7592

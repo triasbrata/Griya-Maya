@@ -14,6 +14,7 @@ import (
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"github.com/zitadel/oidc/v3/pkg/oidc"
@@ -53,6 +54,10 @@ type Storage struct {
 	adminPassword string
 
 	signKey *signingKey
+
+	// web is the WebAuthn (passkey) relying party. nil when unconfigured
+	// (WEBAUTHN_RP_ID empty), in which case the passkey endpoints report 503.
+	web *webauthn.WebAuthn
 }
 
 // signingKey implements op.SigningKey.
@@ -89,6 +94,11 @@ func NewStorage(d1c *d1.Client, kvc *kv.Client, cfg config.OIDCConfig) *Storage 
 		authReqTTL:    30 * time.Minute,
 		adminEmail:    cfg.AdminEmail,
 		adminPassword: cfg.AdminPassword,
+	}
+	if web, err := newWebAuthn(cfg); err != nil {
+		slog.Warn("oidc: webauthn disabled (bad config)", "err", err)
+	} else {
+		s.web = web
 	}
 	ctx := context.Background()
 	s.loadOrCreateSigningKey(ctx)

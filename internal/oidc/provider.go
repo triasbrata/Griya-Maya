@@ -70,6 +70,21 @@ func NewProvider(storage *Storage, cfg config.OIDCConfig) (*Provider, error) {
 	mux.HandleFunc("/login/username", login.username)
 	mux.HandleFunc("/register", login.register)
 	mux.Handle("/login/consent", interceptor.HandlerFunc(login.consent))
+	// Passkey (biometric) login for the in-flight auth request. Discoverable,
+	// usernameless; serves both admin-web (browser) and native iOS. Registration
+	// is elsewhere (bearer-gated JSON API, webauthn_handler.go).
+	mux.HandleFunc("/login/webauthn/begin", login.webauthnLoginBegin)
+	mux.HandleFunc("/login/webauthn/finish", login.webauthnLoginFinish)
+	// Apple App Site Association: lets native iOS passkeys
+	// (ASAuthorizationController) associate with this domain (webcredentials).
+	// Served only when app IDs are configured. More specific than the OP's
+	// /.well-known/openid-configuration, so it wins the mux match.
+	if aasa := appleAppSiteAssociation(cfg.WebAuthnAppleAppIDs); aasa != nil {
+		mux.HandleFunc("/.well-known/apple-app-site-association", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(aasa)
+		})
+	}
 	mux.HandleFunc("/logged-out", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte("<!doctype html><p>Signed out.</p>"))

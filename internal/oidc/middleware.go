@@ -80,6 +80,22 @@ func (p *Provider) middleware(scopeFor func(*app.RequestContext) string) app.Han
 	}
 }
 
+// SubjectFromContext returns the authenticated subject (user id) from the
+// verified access-token claims a Middleware placed on the request, or "" if no
+// claims are present (the route was not gated). Used by handlers that act on
+// behalf of the caller, e.g. passkey registration.
+func SubjectFromContext(c *app.RequestContext) string {
+	v, ok := c.Get(claimsKey)
+	if !ok {
+		return ""
+	}
+	claims, ok := v.(*oidc.AccessTokenClaims)
+	if !ok {
+		return ""
+	}
+	return claims.GetSubject()
+}
+
 func bearerToken(header string) string {
 	const prefix = "Bearer "
 	if len(header) > len(prefix) && strings.EqualFold(header[:len(prefix)], prefix) {

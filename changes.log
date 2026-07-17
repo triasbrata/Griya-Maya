@@ -857,3 +857,16 @@ for the required entry format.
 - Tests: go build ./... + go vet ./... clean; go test ./... → 405 pass (was 389).
   Coverage of gated pkgs: domain 100%, service 89.6%, handler 87.5%, d1 82.4%
   (all ≥ 80%).
+
+## 2026-07-14 — Remember OAuth consent (skip modal on repeat)
+- What: Consent screen now skipped when user already granted every requested scope to a client; only the not-yet-consented scope delta is shown (incremental consent). Consent modal reworked: human-readable scope labels + raw name, lock icon, "won't ask again" note.
+- Why: User request — don't re-prompt consent for same client_id + same scopes.
+- Files: migrations/0013_oidc_consent.sql (new oidc_user_consent table), internal/oidc/consent.go (new: consentScopes/saveConsent + missing/union/label helpers), internal/oidc/login.go (skip-when-consented + save-on-approve), internal/oidc/templates.go (consent redesign, Scopes now []scopeView), internal/oidc/consent_test.go (new).
+- Tests: go build ./... + go vet ./internal/oidc/... clean; go test ./internal/oidc/... → 15 pass (was 9). oidc is coverage-exempt per CLAUDE.md.
+
+## 2026-07-17 — WebAuthn/passkey (biometric) login
+- What: Added FIDO2 passkey auth. Registration is a bearer-gated JSON API (POST /v1/webauthn/register/{begin,finish}); the subject comes from the access token so a signed-in user (password) enrolls a passkey. Login is usernameless/discoverable on the OP page (POST /login/webauthn/{begin,finish}), serving admin-web (browser navigator.credentials) and native iOS (ASAuthorizationController) via JSON options; on success it attaches the subject to the in-flight auth request and returns the OP callback (or a consent redirect). AMR now records "webauthn" vs "pwd". Serves /.well-known/apple-app-site-association (webcredentials) when Apple app IDs are configured. Feature disabled (503) when WEBAUTHN_RP_ID is empty.
+- Why: User request — login dengan biometrik. Chosen model: WebAuthn/passkey (FIDO2), native iOS + admin-web.
+- Files: go.mod/go.sum (+github.com/go-webauthn/webauthn v0.17.4); migrations/0014_webauthn_credential.sql (new); internal/oidc/webauthn.go, webauthn_login.go, webauthn_handler.go, webauthn_test.go (new); internal/oidc/{storage.go,provider.go,models.go,login.go,middleware.go,templates.go}; internal/config/config.go (+WEBAUTHN_* env); internal/app/module.go (provide NewWebAuthnHandler); internal/server/router.go (/v1/webauthn group + RouterParams); .env.example, worker/index.ts (WEBAUTHN_* passthrough); internal/server/swagger/* (make docs).
+- Tests: go build ./... + go vet ./... clean; go test ./... → 420 pass (oidc +9 webauthn tests). oidc is coverage-exempt per CLAUDE.md.
+- Follow-up: apply migration (wrangler d1 execute manga --file=migrations/0014_webauthn_credential.sql); set WEBAUTHN_RP_ID/RP_ORIGINS/APPLE_APP_IDS; coordinate ../mihon for native ASAuthorizationController + associated-domains entitlement.

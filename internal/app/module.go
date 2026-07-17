@@ -55,6 +55,7 @@ var Module = fx.Options(
 		oidc.NewProvider,
 		oidc.NewDCRHandler,
 		oidc.NewUserAdminHandler,
+		oidc.NewWebAuthnHandler,
 	),
 
 	// Repositories bound to service ports. MediaRepo and the R2 store are also

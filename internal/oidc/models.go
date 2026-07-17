@@ -43,6 +43,9 @@ type AuthRequest struct {
 
 	IsDone   bool      `json:"is_done"`
 	AuthTime time.Time `json:"auth_time"`
+	// AuthMethod is the AMR ("pwd", "webauthn") recorded when the request is
+	// finished, so tokens reflect how the user actually authenticated.
+	AuthMethod string `json:"auth_method,omitempty"`
 }
 
 func (a *AuthRequest) GetID() string            { return a.ID }
@@ -61,11 +64,15 @@ func (a *AuthRequest) GetResponseType() oidc.ResponseType { return a.ResponseTyp
 func (a *AuthRequest) GetResponseMode() oidc.ResponseMode { return a.ResponseMode }
 
 func (a *AuthRequest) GetAMR() []string {
-	// This provider only authenticates with a password.
-	if a.IsDone {
-		return []string{"pwd"}
+	if !a.IsDone {
+		return nil
 	}
-	return nil
+	// AuthMethod records the actual mechanism (webauthn for passkeys); older
+	// requests without it default to password.
+	if a.AuthMethod != "" {
+		return []string{a.AuthMethod}
+	}
+	return []string{"pwd"}
 }
 
 func (a *AuthRequest) GetCodeChallenge() *oidc.CodeChallenge {

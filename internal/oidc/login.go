@@ -22,7 +22,25 @@ func newLoginUI(storage *Storage, callback func(context.Context, string) string)
 // username handles GET (render form) and POST (verify credentials -> consent).
 func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		renderPage(w, loginData{ID: r.URL.Query().Get("authRequestID")})
+		id := r.URL.Query().Get("authRequestID")
+		// A passkey login attaches the subject to the auth request via the JSON
+		// endpoints (webauthn_login.go) without rendering anything. When consent is
+		// still pending afterwards, the browser navigates here to complete it — so
+		// render the consent card directly instead of asking for a password again.
+		if id != "" {
+			if req, err := l.storage.AuthRequestByID(r.Context(), id); err == nil && req.GetSubject() != "" {
+				granted, _ := l.storage.consentScopes(r.Context(), req.GetSubject(), req.GetClientID())
+				if missing := missingScopes(req.GetScopes(), granted); len(missing) > 0 {
+					clientName := req.GetClientID()
+					if c, err := l.storage.clientByID(r.Context(), req.GetClientID()); err == nil && c != nil && c.clientName != "" {
+						clientName = c.clientName
+					}
+					renderPage(w, loginData{ID: id, Consent: true, ClientName: clientName, Scopes: scopeViews(missing)})
+					return
+				}
+			}
+		}
+		renderPage(w, loginData{ID: id, WebAuthn: l.storage.web != nil})
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -42,7 +60,7 @@ func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 			renderCard(w, loginData{ID: id, Email: email, Pending: true})
 			return
 		}
-		renderCard(w, loginData{ID: id, Error: "Invalid email or password"})
+		renderCard(w, loginData{ID: id, Error: "Invalid email or password", WebAuthn: l.storage.web != nil})
 		return
 	}
 	if err := l.storage.setAuthRequestUser(r.Context(), id, uid); err != nil {
@@ -55,6 +73,22 @@ func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 		renderCard(w, loginData{ID: id, Error: "Login session expired, please retry"})
 		return
 	}
+
+	// Skip the consent screen when the user has already granted every requested
+	// scope to this client on a prior sign-in. Only the not-yet-consented scopes
+	// (the delta) are shown when consent is still needed (incremental consent).
+	granted, _ := l.storage.consentScopes(r.Context(), uid, req.GetClientID())
+	missing := missingScopes(req.GetScopes(), granted)
+	if len(missing) == 0 {
+		if err := l.storage.finishAuthRequest(r.Context(), id); err != nil {
+			renderCard(w, loginData{ID: id, Error: "Login session expired, please retry"})
+			return
+		}
+		w.Header().Set("HX-Redirect", l.callback(r.Context(), id))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	clientName := req.GetClientID()
 	if c, err := l.storage.clientByID(r.Context(), req.GetClientID()); err == nil && c != nil && c.clientName != "" {
 		clientName = c.clientName
@@ -63,7 +97,7 @@ func (l *loginUI) username(w http.ResponseWriter, r *http.Request) {
 		ID:         id,
 		Consent:    true,
 		ClientName: clientName,
-		Scopes:     req.GetScopes(),
+		Scopes:     scopeViews(missing),
 	})
 }
 
@@ -154,6 +188,14 @@ func (l *loginUI) consent(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	// Remember this grant so a later auth request for the same (or a subset of
+	// these) scopes skips the consent screen. Derived from the auth request on
+	// the server, not the form, so the client can't widen what it recorded.
+	if req, err := l.storage.AuthRequestByID(r.Context(), id); err == nil && req.GetSubject() != "" {
+		if serr := l.storage.saveConsent(r.Context(), req.GetSubject(), req.GetClientID(), req.GetScopes()); serr != nil {
+			slog.Warn("oidc: consent not persisted", "err", serr)
+		}
+	}
 	if err := l.storage.finishAuthRequest(r.Context(), id); err != nil {
 		renderCard(w, loginData{ID: id, Consent: true, Error: "Login session expired, please retry"})
 		return
@@ -187,14 +229,21 @@ func (s *Storage) setAuthRequestUser(ctx context.Context, id, userID string) err
 	return s.putJSON(ctx, kvAuthReqPrefix+id, req, s.authReqTTL)
 }
 
-// finishAuthRequest marks the auth request authenticated so the OP will issue a
-// code on the callback.
+// finishAuthRequest marks the auth request authenticated (via password) so the
+// OP will issue a code on the callback.
 func (s *Storage) finishAuthRequest(ctx context.Context, id string) error {
+	return s.finishAuthRequestAMR(ctx, id, "pwd")
+}
+
+// finishAuthRequestAMR is finishAuthRequest with an explicit auth method (AMR),
+// e.g. "webauthn" for a passkey login.
+func (s *Storage) finishAuthRequestAMR(ctx context.Context, id, amr string) error {
 	req := &AuthRequest{}
 	if err := s.getJSON(ctx, kvAuthReqPrefix+id, req); err != nil {
 		return err
 	}
 	req.IsDone = true
 	req.AuthTime = time.Now()
+	req.AuthMethod = amr
 	return s.putJSON(ctx, kvAuthReqPrefix+id, req, s.authReqTTL)
 }
